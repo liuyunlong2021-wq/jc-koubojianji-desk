@@ -1,0 +1,32 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+dist-electron
+dist-native
+release
+release-translation
+*.local
+*.db
+*.db-journal
+
+# Downloaded by pnpm setup:funasr; pinned in build/scripts/setup-funasr.js
+third_party/FunASR/
+__pycache__/
+*.pyc
+
+# Editor directories and files
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

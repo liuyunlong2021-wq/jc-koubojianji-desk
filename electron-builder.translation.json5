@@ -1,0 +1,20 @@
+{
+  extends: './electron-builder.json5',
+  productName: '口播剪辑器',
+  appId: 'com.yils.talking-head-editor',
+  directories: {
+    output: 'release-koubojianji/${version}',
+  },
+  mac: {
+    artifactName: '口播剪辑器-${version}-mac-${arch}-installer.${ext}',
+    icon: './public/video-translation-icon.png',
+  },
+  win: {
+    artifactName: '口播剪辑器-${version}-win-${arch}-setup.${ext}',
+    icon: './public/video-translation-icon.png',
+  },
+  linux: {
+    artifactName: '口播剪辑器-${version}-linux-${arch}.${ext}',
+    icon: './public/video-translation-icon.png',
+  },
+}
