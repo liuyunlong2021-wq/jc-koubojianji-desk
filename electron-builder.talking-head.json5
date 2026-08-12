@@ -7,14 +7,14 @@
   },
   mac: {
     artifactName: '口播剪辑器-${version}-mac-${arch}-installer.${ext}',
-    icon: './public/video-translation-icon.png',
+    icon: './public/talking-head-icon.png',
   },
   win: {
     artifactName: '口播剪辑器-${version}-win-${arch}-setup.${ext}',
-    icon: './public/video-translation-icon.png',
+    icon: './public/talking-head-icon.png',
   },
   linux: {
     artifactName: '口播剪辑器-${version}-linux-${arch}.${ext}',
-    icon: './public/video-translation-icon.png',
+    icon: './public/talking-head-icon.png',
   },
 }

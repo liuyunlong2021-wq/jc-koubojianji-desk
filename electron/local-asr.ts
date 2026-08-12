@@ -35,7 +35,7 @@ interface FunAsrTranscript {
 
 function funAsrHome() {
   if (process.env.FUNASR_HOME) return path.resolve(process.env.FUNASR_HOME)
-  const mainlineRoot = path.join(app.getPath('appData'), 'jc-video-translation-desk')
+  const mainlineRoot = path.join(app.getPath('appData'), 'jc-koubojianji-desk')
   const modelRoot = path.join(mainlineRoot, 'models', 'funasr', 'models')
   if (
     fs.existsSync(path.join(mainlineRoot, 'runtime', 'funasr-venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')) &&

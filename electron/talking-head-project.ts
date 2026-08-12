@@ -7,8 +7,8 @@ import { promisify } from 'node:util'
 import { dialog, shell } from 'electron'
 import { formatTalkingHeadAss, normalizeTalkingHeadSubtitleStyle, talkingHeadHighlightPositions, talkingHeadHighlightTemplates, talkingHeadMediaDirectories, talkingHeadMediaRelativePath, talkingHeadSoundEffects, validateTalkingHeadCues, type TalkingHeadBackgroundMusic, type TalkingHeadComposeOptions, type TalkingHeadCue, type TalkingHeadEditPlan, type TalkingHeadHighlightPlan, type TalkingHeadProjectState } from '../src/runtime/talkingHeadProject.ts'
 import { executeFFmpeg } from './ffmpeg/index.ts'
-import { funAsrCuesToSrt, transcribeAudioWithFunAsr } from './video-translation-asr.ts'
-import { calibrateTalkingHeadSubtitles, chooseTalkingHeadHighlightPositions, generateTalkingHeadEditPlan, generateTalkingHeadHighlights } from './cloud.ts'
+import { funAsrCuesToSrt, transcribeAudioWithFunAsr } from './local-asr.ts'
+import { calibrateTalkingHeadSubtitles, chooseTalkingHeadHighlightPositions, generateTalkingHeadEditPlan, generateTalkingHeadHighlights } from './talking-head-cloud.ts'
 import type { TextModel } from './types.ts'
 
 const runFile = promisify(execFile)

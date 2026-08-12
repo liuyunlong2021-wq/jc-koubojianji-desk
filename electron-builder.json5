@@ -21,7 +21,7 @@
       },
     ],
     artifactName: '口播剪辑器-${version}-mac-${arch}-installer.${ext}',
-    icon: './public/video-translation-icon.png',
+    icon: './public/talking-head-icon.png',
   },
   win: {
     target: [
@@ -30,7 +30,7 @@
       },
     ],
     artifactName: '口播剪辑器-${version}-win-${arch}-setup.${ext}',
-    icon: './public/video-translation-icon.png',
+    icon: './public/talking-head-icon.png',
   },
   nsis: {
     language: '0x0804',
@@ -42,7 +42,7 @@
   linux: {
     target: ['AppImage'],
     artifactName: '口播剪辑器-${version}-linux-${arch}.${ext}',
-    icon: './public/video-translation-icon.png',
+    icon: './public/talking-head-icon.png',
   },
   publish: null, // disable auto publish 防止重复发版
 }

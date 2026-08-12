@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import axios from 'axios'
-import { API_ORIGIN, readApiKey } from './cloud.ts'
+import { API_ORIGIN, readApiKey } from './talking-head-cloud.ts'
 import { generateUniqueFileName } from './lib/tools.ts'
 import { executeFFmpeg } from './ffmpeg/index.ts'
 import {

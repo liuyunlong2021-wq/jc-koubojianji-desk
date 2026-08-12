@@ -12,7 +12,7 @@ import { syncElectronDevServerUrl } from './build/vite-plugins/sync-electron-dev
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version),
-    __APP_EDITION__: JSON.stringify(process.env.APP_EDITION || 'translation'),
+    __APP_EDITION__: JSON.stringify(process.env.APP_EDITION || 'talking-head'),
   },
   plugins: [
     syncElectronDevServerUrl(),
@@ -35,7 +35,7 @@ export default defineConfig({
         },
         vite: {
           define: {
-            __APP_EDITION__: JSON.stringify(process.env.APP_EDITION || 'translation'),
+            __APP_EDITION__: JSON.stringify(process.env.APP_EDITION || 'talking-head'),
           },
           build: {
             rollupOptions: {

@@ -24,7 +24,7 @@ protocol.registerSchemesAsPrivileged([
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const appName = '口播剪辑器'
-const appIcon = 'video-translation-icon.png'
+const appIcon = 'talking-head-icon.png'
 
 // The editor never imports another product's projects or credentials.
 const appDataPath = app.getPath('appData')
@@ -122,7 +122,7 @@ function buildMenu() {
                 label: i18next.t('menu.app.about'),
                 click: async () => {
                   const { shell } = await import('electron')
-                  await shell.openExternal('https://github.com/liuyunlong2021-wq/jc-video-translation-desk')
+                  await shell.openExternal('https://github.com/liuyunlong2021-wq/jc-koubojianji-desk')
                 },
               },
               { type: 'separator' },
@@ -176,7 +176,7 @@ function buildMenu() {
           label: i18next.t('menu.help.learnMore'),
           click: async () => {
             const { shell } = await import('electron')
-            await shell.openExternal('https://github.com/liuyunlong2021-wq/jc-video-translation-desk')
+            await shell.openExternal('https://github.com/liuyunlong2021-wq/jc-koubojianji-desk')
           },
         },
       ] as MenuItemConstructorOptions[],

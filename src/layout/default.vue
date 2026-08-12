@@ -1,7 +1,7 @@
 <template>
   <div class="layout-container" :class="{ 'is-mac': isMac }" :style="layoutStyle">
     <div class="logo" v-if="!route.meta.hideAppIcon">
-      <img src="/video-translation-icon.png" alt="" />
+      <img src="/talking-head-icon.png" alt="" />
       <span>口播剪辑器</span>
     </div>
     <div class="window-control-bar">
