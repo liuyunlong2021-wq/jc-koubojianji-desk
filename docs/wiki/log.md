@@ -2,6 +2,7 @@
 
 ## 2026-08-12
 
+- 正式开发目录统一为 `/Users/by3/Documents/jc-koubojianji-desk`；原拆分前副本改名为 `/Users/by3/Documents/jc-koubojianji-desk-legacy` 并保留为回退用途，未删除代码。路径修正提交为 `d6885ed`。
 - 口播剪辑器独立产品基线已写入 Wiki：后续开发入口固定为 `jc-koubojianji-desk`，母项目仅保留历史回退用途。
 - 明确口播产品边界、`.raw/jc-media` 项目存储规范、应用级模型/API Key 隔离规则和 Wiki 维护规则；未修改母项目 Wiki。
 - 品牌图标已更新为几何化版本，类型检查通过，运行时测试 `7/7` 通过。

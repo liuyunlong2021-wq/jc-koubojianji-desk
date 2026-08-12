@@ -4,7 +4,7 @@
 
 ## 口播剪辑器当前状态
 
-- 独立仓库与应用入口已完成：开发、测试、构建和运行均使用 `/Users/by3/Documents/jc-koubojianji-desk`。
+- 独立仓库与应用入口已完成：开发、测试、构建和运行均使用 `/Users/by3/Documents/jc-koubojianji-desk`；`jc-koubojianji-desk-legacy` 仅保留为回退副本。
 - 项目媒体和文档固定写入 `.raw/jc-media/`；成片在 `视频/`，工作文档在 `文档/`，音频在 `音频/`。
 - 当前独立产品基线和边界见 [[开发/口播剪辑器独立产品基线]]。
 
