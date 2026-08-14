@@ -5,6 +5,7 @@ import type {
   TalkingHeadComposeOptions,
   TalkingHeadCue,
   TalkingHeadEditPlan,
+  TalkingHeadHighlight,
   TalkingHeadHighlightPlan,
 } from '../src/runtime/talkingHeadProject'
 
@@ -35,6 +36,7 @@ contextBridge.exposeInMainWorld('electron', {
     chooseSource: (rootPath?: string) => ipcRenderer.invoke('talking-head-source-choose', rootPath),
     transcribe: (rootPath: string) => ipcRenderer.invoke('talking-head-transcribe', rootPath),
     load: (rootPath: string) => ipcRenderer.invoke('talking-head-project-load', rootPath),
+    previewFrame: (rootPath: string, timestampMs: number, cue?: Pick<TalkingHeadCue, 'cueId' | 'confirmedText'>, subtitleStyle?: TalkingHeadComposeOptions['subtitleStyle'], highlight?: TalkingHeadHighlight) => ipcRenderer.invoke('talking-head-preview-frame', rootPath, timestampMs, cue, subtitleStyle, highlight),
     listFonts: () => ipcRenderer.invoke('talking-head-fonts-list'),
     chooseBackgroundMusic: (rootPath: string) => ipcRenderer.invoke('talking-head-background-music-choose', rootPath),
     saveBackgroundMusic: (rootPath: string, music?: TalkingHeadBackgroundMusic) => ipcRenderer.invoke('talking-head-background-music-save', rootPath, music),

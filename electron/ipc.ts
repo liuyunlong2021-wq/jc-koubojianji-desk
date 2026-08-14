@@ -6,7 +6,7 @@ import { OpenExternalParams, StatEventParams } from './types'
 import { sendStatEvent } from './lib/stat'
 import { hasApiKey, saveApiKey, testApiKey } from './talking-head-cloud'
 import { getFunAsrInstallStatus, getFunAsrSubtitleInstallStatus, installFunAsr } from './funasr-installer'
-import { calibrateTalkingHeadCues, chooseTalkingHeadBackgroundMusic, chooseTalkingHeadProject, chooseTalkingHeadSource, composeTalkingHeadEditPlan, generateTalkingHeadEditPlanForProject, generateTalkingHeadHighlightsForProject, listTalkingHeadFonts, loadTalkingHeadProjectState, prepareTalkingHeadSoundEffects, restoreTalkingHeadRecognizedCues, saveTalkingHeadBackgroundMusic, saveTalkingHeadCues, saveTalkingHeadEditPlan, saveTalkingHeadHighlightPlan, setTalkingHeadSoundEffectsEnabled, showTalkingHeadOutput, showTalkingHeadProject, transcribeTalkingHeadSource } from './talking-head-project'
+import { calibrateTalkingHeadCues, chooseTalkingHeadBackgroundMusic, chooseTalkingHeadProject, chooseTalkingHeadSource, composeTalkingHeadEditPlan, generateTalkingHeadEditPlanForProject, generateTalkingHeadHighlightsForProject, listTalkingHeadFonts, loadTalkingHeadProjectState, prepareTalkingHeadSoundEffects, previewTalkingHeadFrame, restoreTalkingHeadRecognizedCues, saveTalkingHeadBackgroundMusic, saveTalkingHeadCues, saveTalkingHeadEditPlan, saveTalkingHeadHighlightPlan, setTalkingHeadSoundEffectsEnabled, showTalkingHeadOutput, showTalkingHeadProject, transcribeTalkingHeadSource } from './talking-head-project'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 let windowMaximizedByApp = false
@@ -114,6 +114,7 @@ export default function initIPC() {
     transcribeTalkingHeadSource(rootPath, (message) => event.sender.send('talking-head-progress', message)),
   )
   ipcMain.handle('talking-head-project-load', (_event, rootPath: string) => loadTalkingHeadProjectState(rootPath))
+  ipcMain.handle('talking-head-preview-frame', (_event, rootPath: string, timestampMs: number, cue, subtitleStyle, highlight) => previewTalkingHeadFrame(rootPath, timestampMs, cue, subtitleStyle, highlight))
   ipcMain.handle('talking-head-fonts-list', () => listTalkingHeadFonts())
   ipcMain.handle('talking-head-background-music-choose', (_event, rootPath: string) => chooseTalkingHeadBackgroundMusic(rootPath))
   ipcMain.handle('talking-head-background-music-save', (_event, rootPath: string, music) => saveTalkingHeadBackgroundMusic(rootPath, music))

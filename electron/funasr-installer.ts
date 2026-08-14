@@ -25,23 +25,51 @@ const SEPARATION_MODEL_URL =
 
 let installing: Promise<FunAsrInstallStatus> | null = null
 
-export function funAsrDataRoot() {
-  if (process.env.FUNASR_HOME) return path.resolve(process.env.FUNASR_HOME)
-  const mainlineRoot = path.join(app.getPath('appData'), 'jc-koubojianji-desk')
-  if (
-    fs.existsSync(path.join(mainlineRoot, 'runtime', 'funasr-venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')) &&
-    MODEL_DIRS.every((relative) => fs.existsSync(path.join(mainlineRoot, 'models', 'funasr', relative)))
-  ) return mainlineRoot
-  return app.getPath('userData')
+function pythonIn(root: string) {
+  return path.join(root, 'runtime', 'funasr-venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
+}
+
+function modelsInstalledAt(root: string) {
+  return MODEL_DIRS.every((relative) =>
+    fs.existsSync(path.join(root, relative)) || fs.existsSync(path.join(root, relative.slice('models/'.length))),
+  )
+}
+
+function candidateDataRoots() {
+  const appData = app.getPath('appData')
+  const sharedRoot = path.join(appData, 'Jiucaihezi', 'funasr')
+  const productRoots = fs.existsSync(appData)
+    ? fs.readdirSync(appData, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && entry.name.startsWith('jc-'))
+        .map((entry) => path.join(appData, entry.name))
+    : []
+  return [...new Set([process.env.FUNASR_HOME && path.resolve(process.env.FUNASR_HOME), sharedRoot, app.getPath('userData'), ...productRoots].filter(Boolean) as string[])]
+}
+
+function cachedModelRoots() {
+  const home = os.homedir()
+  return [
+    path.join(home, '.cache', 'modelscope', 'hub'),
+    path.join(home, '.cache', 'huggingface', 'hub'),
+  ]
+}
+
+export function funAsrRuntimeRoot() {
+  return candidateDataRoots().find((root) => fs.existsSync(pythonIn(root))) || path.join(app.getPath('appData'), 'Jiucaihezi', 'funasr')
+}
+
+export function funAsrModelRoot() {
+  const bundled = candidateDataRoots()
+    .map((root) => path.join(root, 'models', 'funasr'))
+    .find(modelsInstalledAt)
+  const cached = cachedModelRoots().find(modelsInstalledAt)
+  if (bundled) return bundled
+  if (cached) return cached
+  return path.join(app.getPath('appData'), 'Jiucaihezi', 'funasr', 'models', 'funasr')
 }
 
 function pythonPath() {
-  return path.join(
-    funAsrDataRoot(),
-    'runtime',
-    'funasr-venv',
-    process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
-  )
+  return pythonIn(funAsrRuntimeRoot())
 }
 
 function runtimePath() {
@@ -51,11 +79,11 @@ function runtimePath() {
 }
 
 function modelRoot() {
-  return path.join(funAsrDataRoot(), 'models', 'funasr')
+  return funAsrModelRoot()
 }
 
 function modelsInstalled() {
-  return MODEL_DIRS.every((relative) => fs.existsSync(path.join(modelRoot(), relative)))
+  return modelsInstalledAt(modelRoot())
 }
 
 function separationModelsInstalled() {
@@ -65,7 +93,7 @@ function separationModelsInstalled() {
 }
 
 function separationModelRoot() {
-  return path.join(funAsrDataRoot(), 'models', 'separation')
+  return path.join(funAsrRuntimeRoot(), 'models', 'separation')
 }
 
 async function downloadFile(
@@ -176,7 +204,7 @@ async function installFunAsrEngine(reportProgress: (message: string) => void, in
     try {
       if (fs.existsSync(pythonPath()) && modelsInstalled() && (!includeSeparation || separationModelsInstalled()))
         return { state: 'ready' as const, message: includeSeparation ? '本地字幕与人声分离引擎已就绪' : '本地字幕识别引擎已就绪' }
-      const root = funAsrDataRoot()
+      const root = funAsrRuntimeRoot()
       const venv = path.dirname(path.dirname(pythonPath()))
       const uv = await findUv(reportProgress)
       reportProgress('正在准备 Python 3.10 环境…')

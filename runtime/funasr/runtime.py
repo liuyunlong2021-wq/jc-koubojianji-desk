@@ -25,7 +25,7 @@ ENGINE = "funasr-1.4.1-sensevoice-small-ct-punc-v3"
 
 
 def model_paths(root: Path) -> dict[str, Path]:
-    base = root / "models"
+    base = root / "models" if (root / "models").is_dir() else root
     paths = {name: base / relative for name, relative in MODEL_DIRS.items()}
     missing = [str(path) for path in paths.values() if not path.is_dir()]
     if missing:
@@ -47,56 +47,55 @@ def split_on_long_silence(
     timestamps: list,
     gap_ms: int = 1500,
     max_duration_ms: int = 5000,
-    max_chars: int = 22,
+    max_chars: int = 15,
 ) -> list[tuple[str, int, int]]:
     units = [
         match
         for match in re.finditer(r"[A-Za-z0-9]+|[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]|[^\s]", text)
         if not unicodedata.category(match.group()[0]).startswith("P")
     ]
-    if len(units) != len(timestamps) or not timestamps:
-        return [(text, int(timestamps[0][0]), int(timestamps[-1][1]))] if timestamps else []
-    hard_boundaries = [
-        index
-        for index in range(1, len(timestamps))
-        if timestamps[index][0] - timestamps[index - 1][1] > gap_ms
-    ]
-    chunks = []
-    starts = [0, *hard_boundaries]
-    ends = [*hard_boundaries, len(timestamps)]
-    punctuation = re.compile(r"[，。！？；：,.!?;:]")
-    for group_start, group_end in zip(starts, ends):
-        start = group_start
-        while start < group_end:
-            end = start + 1
-            candidate = end + 1
-            while candidate <= group_end:
-                text_end = units[candidate].start() if candidate < len(units) else len(text)
-                visible_chars = len(re.sub(r"\s", "", text[units[start].start():text_end]))
-                duration = int(timestamps[candidate - 1][1]) - int(timestamps[start][0])
-                if visible_chars > max_chars or duration > max_duration_ms:
-                    break
-                end = candidate
-                candidate += 1
-            if end < group_end:
-                candidates = range(start + 1, end + 1)
-                punctuated = [
-                    index
-                    for index in candidates
-                    if punctuation.search(text[units[index - 1].end():units[index].start()])
-                ]
-                paused = [
-                    index
-                    for index in candidates
-                    if int(timestamps[index][0]) - int(timestamps[index - 1][1]) >= 250
-                ]
-                end = (punctuated or paused or [end])[-1]
-            text_start = units[start].start()
-            text_end = units[end].start() if end < len(units) else len(text)
-            chunk = text[text_start:text_end].strip()
+    if not timestamps:
+        return []
+    if len(units) != len(timestamps):
+        pieces = []
+        for start in range(0, len(text), max_chars):
+            chunk = text[start:start + max_chars].strip()
             if chunk:
-                chunks.append((chunk, int(timestamps[start][0]), int(timestamps[end - 1][1])))
-            start = end
+                ratio_start = start / max(1, len(text))
+                ratio_end = min(1, (start + len(chunk)) / max(1, len(text)))
+                pieces.append((chunk, int(timestamps[0][0] + (timestamps[-1][1] - timestamps[0][0]) * ratio_start), int(timestamps[0][0] + (timestamps[-1][1] - timestamps[0][0]) * ratio_end)))
+        return pieces
+    punctuation = re.compile(r"[，。！？；：,.!?;:]")
+    boundaries = {
+        index
+        for index in range(1, len(units))
+        if punctuation.search(text[units[index - 1].end():units[index].start()])
+        or int(timestamps[index][0]) - int(timestamps[index - 1][1]) >= gap_ms
+    }
+    boundaries.add(len(units))
+    chunks = []
+    start = 0
+    while start < len(units):
+        limit = start + 1
+        while limit < len(units):
+            text_end = units[limit].start()
+            visible_chars = len(re.sub(r"\s", "", text[units[start].start():text_end]))
+            duration = int(timestamps[limit - 1][1]) - int(timestamps[start][0])
+            if visible_chars >= max_chars or duration >= max_duration_ms:
+                break
+            limit += 1
+        if limit == len(units):
+            duration = int(timestamps[limit - 1][1]) - int(timestamps[start][0])
+            if duration >= max_duration_ms:
+                limit -= 1
+        natural = [index for index in boundaries if start < index <= limit]
+        end = min(natural) if natural else limit
+        text_start = units[start].start()
+        text_end = units[end].start() if end < len(units) else len(text)
+        chunk = punctuation.sub("", text[text_start:text_end]).strip()
+        if chunk:
+            chunks.append((chunk, int(timestamps[start][0]), int(timestamps[end - 1][1])))
+        start = end
     return chunks
 
 

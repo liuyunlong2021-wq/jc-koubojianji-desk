@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { dialog, shell } from 'electron'
-import { formatTalkingHeadAss, normalizeTalkingHeadSubtitleStyle, talkingHeadHighlightPositions, talkingHeadHighlightTemplates, talkingHeadMediaDirectories, talkingHeadMediaRelativePath, talkingHeadSoundEffects, validateTalkingHeadCues, type TalkingHeadBackgroundMusic, type TalkingHeadComposeOptions, type TalkingHeadCue, type TalkingHeadEditPlan, type TalkingHeadHighlightPlan, type TalkingHeadProjectState } from '../src/runtime/talkingHeadProject.ts'
+import { formatTalkingHeadAss, isTalkingHeadEditPlanValid, normalizeTalkingHeadCues, normalizeTalkingHeadSubtitleStyle, splitTalkingHeadCues, talkingHeadHighlightPositions, talkingHeadHighlightTemplates, talkingHeadMediaDirectories, talkingHeadMediaRelativePath, talkingHeadSoundEffects, validateTalkingHeadCues, type TalkingHeadBackgroundMusic, type TalkingHeadComposeOptions, type TalkingHeadCue, type TalkingHeadEditPlan, type TalkingHeadHighlightPlan, type TalkingHeadProjectState } from '../src/runtime/talkingHeadProject.ts'
 import { executeFFmpeg } from './ffmpeg/index.ts'
 import { funAsrCuesToSrt, transcribeAudioWithFunAsr } from './local-asr.ts'
 import { calibrateTalkingHeadSubtitles, chooseTalkingHeadHighlightPositions, generateTalkingHeadEditPlan, generateTalkingHeadHighlights } from './talking-head-cloud.ts'
@@ -45,7 +45,14 @@ async function probeVideoSize(filePath: string) {
 export async function loadTalkingHeadProjectState(rootPath: string): Promise<TalkingHeadProjectState> {
   const project = await ensureTalkingHeadProject(rootPath)
   const fallback: TalkingHeadProjectState = { schemaVersion: 1, name: project.name, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cues: [], editPlanStale: false }
-  return fs.promises.readFile(projectFile(project.rootPath), 'utf8').then((content) => ({ ...fallback, ...JSON.parse(content), cues: Array.isArray(JSON.parse(content).cues) ? JSON.parse(content).cues : [] })).catch(() => fallback)
+  const state = await fs.promises.readFile(projectFile(project.rootPath), 'utf8').then((content) => {
+    const parsed = JSON.parse(content) as Partial<TalkingHeadProjectState>
+    return { ...fallback, ...parsed, cues: Array.isArray(parsed.cues) ? parsed.cues : [] }
+  }).catch(() => fallback)
+  if (state.cues.every((cue) => cue.words?.length)) return state
+  const raw = await fs.promises.readFile(path.join(project.rootPath, talkingHeadMediaRelativePath('文档', '原始转写.json')), 'utf8').then((content) => JSON.parse(content) as { cues?: Array<Pick<TalkingHeadCue, 'cueId' | 'words'>> }).catch(() => undefined)
+  const wordsById = new Map((raw?.cues || []).map((cue: Pick<TalkingHeadCue, 'cueId' | 'words'>) => [cue.cueId, cue.words]))
+  return { ...state, cues: state.cues.map((cue: TalkingHeadCue) => cue.words?.length ? cue : { ...cue, words: wordsById.get(cue.cueId) }) }
 }
 
 export async function listTalkingHeadFonts() {
@@ -125,7 +132,7 @@ export async function chooseTalkingHeadBackgroundMusic(rootPath: string) {
   const target = path.join(project.rootPath, talkingHeadMediaRelativePath('音频', fileName))
   await fs.promises.copyFile(source, target)
   const state = await loadTalkingHeadProjectState(project.rootPath)
-  const backgroundMusic: TalkingHeadBackgroundMusic = { fileName, volume: state.backgroundMusic?.volume ?? 0.12 }
+  const backgroundMusic: TalkingHeadBackgroundMusic = { fileName, volume: state.backgroundMusic?.volume ?? 0.10 }
   await writeProjectState(project.rootPath, { ...state, backgroundMusic, updatedAt: new Date().toISOString() })
   return backgroundMusic
 }
@@ -200,7 +207,7 @@ export async function transcribeTalkingHeadSource(rootPath: string, reportProgre
   await executeFFmpeg(['-i', source, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', audio])
   reportProgress('FunASR 正在识别字幕')
   const transcript = await transcribeAudioWithFunAsr(audio, state.source.durationMs)
-  const cues = transcript.cues.map((cue) => ({ cueId: cue.cueId, startMs: cue.startMs, endMs: cue.endMs, recognizedText: cue.recognizedText, confirmedText: cue.recognizedText }))
+  const cues = normalizeTalkingHeadCues(splitTalkingHeadCues(transcript.cues.map((cue) => ({ cueId: cue.cueId, startMs: cue.startMs, endMs: cue.endMs, recognizedText: cue.recognizedText, confirmedText: cue.recognizedText, words: cue.words }))))
   const docs = path.join(project.rootPath, talkingHeadMediaRelativePath('文档'))
   await Promise.all([
     fs.promises.writeFile(path.join(docs, '原始转写.json'), `${JSON.stringify(transcript, null, 2)}\n`, 'utf8'),
@@ -211,32 +218,51 @@ export async function transcribeTalkingHeadSource(rootPath: string, reportProgre
   return { cues }
 }
 
+export async function previewTalkingHeadFrame(rootPath: string, timestampMs: number, cue?: Pick<TalkingHeadCue, 'cueId' | 'confirmedText'>, subtitleStyle?: TalkingHeadComposeOptions['subtitleStyle'], highlight?: TalkingHeadHighlightPlan['items'][number]) {
+  const project = await ensureTalkingHeadProject(rootPath)
+  const state = await loadTalkingHeadProjectState(project.rootPath)
+  if (!state.source) throw new Error('请先导入口播原视频')
+  const source = path.join(project.rootPath, talkingHeadMediaRelativePath('视频', state.source.fileName))
+  const target = path.join(os.tmpdir(), `jc-preview-${randomUUID()}.jpg`)
+  const ass = path.join(os.tmpdir(), `jc-preview-${randomUUID()}.ass`)
+  try {
+    const size = await probeVideoSize(source)
+    if (cue) await fs.promises.writeFile(ass, formatTalkingHeadAss([{ cueId: cue.cueId, startMs: 0, endMs: 1000, text: cue.confirmedText }], size, subtitleStyle, highlight ? [{ ...highlight, cueId: cue.cueId }] : []), 'utf8')
+    const filters = ['setpts=PTS-STARTPTS', ...(cue ? [`subtitles=filename='${escapeFfmpegFilterPath(ass)}'`] : []), 'scale=720:-2']
+    try {
+      await executeFFmpeg(['-ss', String(Math.max(0, timestampMs) / 1000), '-i', source, '-frames:v', '1', '-vf', filters.join(','), '-q:v', '4', '-y', target])
+    } catch (error) {
+      console.error('Talking-head preview subtitles failed:', error)
+      await executeFFmpeg(['-ss', String(Math.max(0, timestampMs) / 1000), '-i', source, '-frames:v', '1', '-vf', 'scale=720:-2', '-q:v', '4', '-y', target])
+    }
+    return `data:image/jpeg;base64,${await fs.promises.readFile(target, 'base64')}`
+  } finally {
+    await fs.promises.rm(target, { force: true })
+    await fs.promises.rm(ass, { force: true })
+  }
+}
+
 export async function saveTalkingHeadCues(rootPath: string, cues: TalkingHeadCue[]) {
   const project = await ensureTalkingHeadProject(rootPath)
-  validateTalkingHeadCues(cues)
+  const normalized = normalizeTalkingHeadCues(splitTalkingHeadCues(cues))
+  validateTalkingHeadCues(normalized)
   const state = await loadTalkingHeadProjectState(project.rootPath)
+  if (JSON.stringify(state.cues) === JSON.stringify(normalized)) return { cues: normalized }
   const docs = path.join(project.rootPath, talkingHeadMediaRelativePath('文档'))
-  const nextState = { ...state, updatedAt: new Date().toISOString(), cues, editPlan: undefined, highlightPlan: undefined, editPlanStale: true }
+  const nextState = { ...state, updatedAt: new Date().toISOString(), cues: normalized, editPlan: undefined, highlightPlan: undefined, editPlanStale: true }
   await replaceFiles([
-    { path: path.join(docs, '确认字幕.json'), content: `${JSON.stringify(cues, null, 2)}\n` },
-    { path: path.join(docs, '确认字幕.srt'), content: funAsrCuesToSrt(cues.map((cue) => ({ ...cue, recognizedText: cue.confirmedText })), (cue) => cue.recognizedText) },
+    { path: path.join(docs, '确认字幕.json'), content: `${JSON.stringify(normalized, null, 2)}\n` },
+    { path: path.join(docs, '确认字幕.srt'), content: funAsrCuesToSrt(normalized.map((cue) => ({ ...cue, recognizedText: cue.confirmedText })), (cue) => cue.recognizedText) },
     { path: projectFile(project.rootPath), content: `${JSON.stringify(nextState, null, 2)}\n` },
   ])
-  return { cues }
+  return { cues: normalized }
 }
 
 export async function saveTalkingHeadEditPlan(rootPath: string, plan: TalkingHeadEditPlan) {
   const project = await ensureTalkingHeadProject(rootPath)
   const state = await loadTalkingHeadProjectState(project.rootPath)
   if (!state.source || plan.sourceFingerprint !== state.source.fingerprint) throw new Error('原视频已更换，请重新整理结构')
-  const cueIds = state.cues.map((cue) => cue.cueId)
-  if (
-    plan.cueIds.length !== cueIds.length ||
-    new Set(plan.cueIds).size !== cueIds.length ||
-    plan.cueIds.some((cueId) => !cueIds.includes(cueId)) ||
-    new Set(plan.removedCueIds).size !== plan.removedCueIds.length ||
-    plan.removedCueIds.some((cueId) => !cueIds.includes(cueId))
-  ) throw new Error('结构编辑计划无效')
+  if (!isTalkingHeadEditPlanValid(plan, state.cues, state.source.fingerprint)) throw new Error('结构编辑计划无效')
   const nextPlan = { ...plan, updatedAt: new Date().toISOString() }
   const nextState = { ...state, updatedAt: nextPlan.updatedAt, editPlan: nextPlan, editPlanStale: false }
   await replaceFiles([
@@ -265,7 +291,7 @@ export async function saveTalkingHeadHighlightPlan(rootPath: string, plan: Talki
   if (!state.source || plan.sourceFingerprint !== state.source.fingerprint) throw new Error('原视频已更换，请重新生成花字建议')
   const cuesById = new Map(state.cues.map((cue) => [cue.cueId, cue]))
   const styles = new Set(talkingHeadHighlightTemplates.map((template) => template.id))
-  if (plan.items.length > 12 || new Set(plan.items.map((item) => item.cueId)).size !== plan.items.length || plan.items.some((item) => !cuesById.get(item.cueId)?.confirmedText.includes(item.phrase) || !styles.has(item.style) || (item.position && !talkingHeadHighlightPositions.includes(item.position))))
+  if (new Set(plan.items.map((item) => item.cueId)).size !== plan.items.length || plan.items.some((item) => !cuesById.get(item.cueId)?.confirmedText.includes(item.phrase) || !styles.has(item.style) || (item.position && !talkingHeadHighlightPositions.includes(item.position))))
     throw new Error('花字方案无效')
   const nextPlan = { ...plan, updatedAt: new Date().toISOString() }
   const nextState = { ...state, updatedAt: nextPlan.updatedAt, highlightPlan: nextPlan }
@@ -355,21 +381,23 @@ export async function composeTalkingHeadEditPlan(rootPath: string, options: Talk
 
   const durationSeconds = subtitleCues.at(-1)!.endMs / 1000
   const music = state.backgroundMusic
-  if (music) filters.push(`[1:a]atrim=duration=${durationSeconds},volume=${music.volume},aresample=48000[bgm]`, `[aout][bgm]amix=inputs=2:duration=first:dropout_transition=0[mixed]`)
+  if (music) filters.push(`[1:a]atrim=duration=${durationSeconds},volume=${music.volume},aresample=48000[bgm]`, `[aout][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]`)
   const soundEvents = state.soundEffectsEnabled !== false ? highlights.map((item) => ({ item, cue: subtitleCues.find((cue) => cue.cueId === item.cueId) })).filter((event) => event.cue).filter((event, index, events) => index === 0 || event.cue!.startMs - events[index - 1].cue!.startMs >= 1200) : []
   if (soundEvents.length) {
     await ensureTalkingHeadSoundEffects(project.rootPath)
     const audioStart = music ? 2 : 1
     soundEvents.forEach((event, index) => filters.push(`[${audioStart + index}:a]adelay=${event.cue!.startMs}|${event.cue!.startMs},volume=0.5[fx${index}]`))
-    filters.push(`[${music ? 'mixed' : 'aout'}]${soundEvents.map((_, index) => `[fx${index}]`).join('')}amix=inputs=${soundEvents.length + 1}:duration=first:dropout_transition=0[mixedfx]`)
+    filters.push(`[${music ? 'mixed' : 'aout'}]${soundEvents.map((_, index) => `[fx${index}]`).join('')}amix=inputs=${soundEvents.length + 1}:duration=first:dropout_transition=0:normalize=0[mixedfx]`)
   }
+  const finalAudioInput = soundEvents.length ? '[mixedfx]' : music ? '[mixed]' : '[aout]'
+  filters.push(`${finalAudioInput}alimiter=limit=0.95:level_in=1.0:level_out=1.0[finalaudio]`)
   reportProgress('正在按确认顺序拼接视频…')
   await executeFFmpeg([
     '-i', source,
     ...(music ? ['-stream_loop', '-1', '-i', path.join(project.rootPath, talkingHeadMediaRelativePath('音频', music.fileName))] : []),
     ...soundEvents.flatMap((event) => ['-i', path.join(project.rootPath, talkingHeadMediaRelativePath('音频', talkingHeadSoundEffects.find((effect) => effect.style === event.item.style)!.fileName))]),
     '-filter_complex', filters.join(';'),
-    '-map', '[video]', '-map', soundEvents.length ? '[mixedfx]' : music ? '[mixed]' : '[aout]',
+    '-map', '[video]', '-map', '[finalaudio]',
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
     '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-y', output,
   ], { onProgress: (progress) => reportProgress(`正在生成成片… ${progress}%`) })
@@ -393,7 +421,7 @@ export async function calibrateTalkingHeadCues(rootPath: string, textModel: Text
 export async function restoreTalkingHeadRecognizedCues(rootPath: string) {
   const project = await ensureTalkingHeadProject(rootPath)
   const rawPath = path.join(project.rootPath, talkingHeadMediaRelativePath('文档', '原始转写.json'))
-  const raw = JSON.parse(await fs.promises.readFile(rawPath, 'utf8')) as { cues?: Array<{ cueId: string; startMs: number; endMs: number; recognizedText: string }> }
+  const raw = JSON.parse(await fs.promises.readFile(rawPath, 'utf8')) as { cues?: Array<{ cueId: string; startMs: number; endMs: number; recognizedText: string; words?: TalkingHeadCue['words'] }> }
   if (!raw.cues?.length) throw new Error('没有可恢复的 FunASR 原始转写')
   const cues = raw.cues.map((cue) => ({ ...cue, confirmedText: cue.recognizedText }))
   return saveTalkingHeadCues(project.rootPath, cues)

@@ -30,6 +30,7 @@ interface Window {
       chooseSource: (rootPath?: string) => Promise<{ rootPath: string; name: string; fileName: string; fingerprint: string; durationMs: number } | null>
       transcribe: (rootPath: string) => Promise<{ cues: import('../src/runtime/talkingHeadProject').TalkingHeadCue[] }>
       load: (rootPath: string) => Promise<import('../src/runtime/talkingHeadProject').TalkingHeadProjectState>
+      previewFrame: (rootPath: string, timestampMs: number, cue?: Pick<import('../src/runtime/talkingHeadProject').TalkingHeadCue, 'cueId' | 'confirmedText'>, subtitleStyle?: import('../src/runtime/talkingHeadProject').TalkingHeadComposeOptions['subtitleStyle'], highlight?: import('../src/runtime/talkingHeadProject').TalkingHeadHighlight) => Promise<string>
       listFonts: () => Promise<string[]>
       chooseBackgroundMusic: (rootPath: string) => Promise<import('../src/runtime/talkingHeadProject').TalkingHeadBackgroundMusic | null>
       saveBackgroundMusic: (rootPath: string, music?: import('../src/runtime/talkingHeadProject').TalkingHeadBackgroundMusic) => Promise<{ backgroundMusic?: import('../src/runtime/talkingHeadProject').TalkingHeadBackgroundMusic }>

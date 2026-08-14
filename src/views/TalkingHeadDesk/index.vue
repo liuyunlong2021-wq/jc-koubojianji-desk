@@ -12,7 +12,7 @@
           <v-icon v-if="workspace === 'captions'" size="16" color="primary">mdi-check-circle</v-icon>
         </button>
         <v-icon size="18" class="workspace-arrow">mdi-chevron-right</v-icon>
-        <button :class="{ active: workspace === 'structure' }" @click="workspace = 'structure'">
+        <button :class="{ active: workspace === 'structure' }" @click="enterStructureWorkspace">
           <v-icon size="18">mdi-file-tree-outline</v-icon>结构编辑工作台
         </button>
       </nav>
@@ -22,7 +22,7 @@
 
     <section v-if="workspace === 'captions'" class="caption-workspace">
       <section class="source-preview" aria-label="视频预览">
-        <video v-if="sourceFileName" ref="sourceVideo" class="video-stage" controls :src="sourceVideoUrl" @loadedmetadata="readSourceAspect" @timeupdate="stopCuePreview" />
+        <video v-if="sourceFileName" ref="sourceVideo" class="video-stage" controls :src="sourceVideoUrl" @loadedmetadata="readSourceAspect" @timeupdate="syncCaptionPlayhead" @seeked="syncCaptionPlayhead" />
         <div v-else class="video-stage" role="button" tabindex="0" @click="chooseSource">
           <v-btn color="primary" variant="flat" prepend-icon="mdi-upload" @click.stop="chooseSource">上传口播视频</v-btn>
         </div>
@@ -73,7 +73,7 @@
         </section>
         <section class="inspector-section">
           <h2>播放头字幕编辑</h2>
-          <p>当前位置 00:26.160</p>
+          <p>当前位置 {{ formatPreciseTime(captionPlayheadMs) }}</p>
           <v-btn block color="primary" variant="tonal" prepend-icon="mdi-plus" @click="editCue('add')">在当前位置新增字幕</v-btn>
           <v-btn block variant="text" prepend-icon="mdi-content-cut" class="mt-1" @click="editCue('split')">在当前位置拆分所选字幕</v-btn>
           <v-btn block variant="text" prepend-icon="mdi-call-merge" class="mt-1" @click="editCue('merge-next')">与下一条字幕合并</v-btn>
@@ -91,18 +91,17 @@
 
     <section v-else class="structure-workspace">
       <section class="final-preview-panel">
-        <div class="final-video-stage" @pointerdown.capture="unlockPreviewAudio">
-          <audio ref="previewMusic" :src="backgroundMusicUrl" preload="auto" />
+        <div class="final-video-stage">
           <video v-if="finalVideoUrl" class="preview-video" controls :src="finalVideoUrl" />
-          <video v-else-if="sourceVideoUrl" ref="structureVideo" class="preview-video" controls :src="sourceVideoUrl" @loadedmetadata="readSourceAspect" @play="startPreviewAudio" @pause="stopPreviewAudio" @seeking="resetPreviewEffects" @ended="stopPreviewAudio" @timeupdate="syncPreviewAudio" />
+          <video v-else-if="sourceVideoUrl" ref="structureVideo" class="preview-video" controls :src="sourceVideoUrl" @loadedmetadata="readSourceAspect" @timeupdate="stopCuePreview" />
           <template v-else>
-          <v-icon size="54">{{ finalRendered ? 'mdi-play-circle' : 'mdi-filmstrip' }}</v-icon>
-          <strong>{{ finalRendered ? '口播剪辑成片' : '确认结构后生成成片' }}</strong>
-          <small>{{ finalRendered ? `00:00 / ${estimatedDuration}` : '确认结构后生成成片' }}</small>
+            <v-icon size="54">{{ finalRendered ? 'mdi-play-circle' : 'mdi-filmstrip' }}</v-icon>
+            <strong>{{ finalRendered ? '口播剪辑成片' : '确认结构后生成成片' }}</strong>
+            <small>{{ finalRendered ? `00:00 / ${estimatedDuration}` : '确认结构后生成成片' }}</small>
           </template>
           <div v-if="!finalVideoUrl && sourceVideoUrl" class="preview-output-frame" :style="previewOutputFrameStyle">
-            <div v-if="previewHighlight?.cueId === previewCue?.cueId" :key="`${previewHighlight.cueId}-${previewHighlight.phrase}-${previewHighlight.style}-${previewHighlight.position}`" class="focus-word-preview" :class="`focus-${previewHighlight.position || '左上'}`" :style="highlightPreviewStyle(previewHighlight)">{{ previewHighlight.phrase }}</div>
-            <div class="subtitle-style-preview" :style="subtitlePreviewStyle"><template v-if="previewCue">{{ previewCue.confirmedText }}</template><template v-else>点击字幕预览</template></div>
+            <div v-if="previewHighlight?.cueId === previewCue?.cueId" class="focus-word-preview" :class="`focus-${previewHighlight.position || '左上'}`" :style="highlightPreviewStyle(previewHighlight)">{{ previewHighlight.phrase }}</div>
+            <div class="subtitle-style-preview" :style="subtitlePreviewStyle">{{ previewCue?.confirmedText || '点击字幕预览' }}</div>
           </div>
         </div>
       </section>
@@ -123,7 +122,7 @@
           @drop="dropCue(cue.cueId)"
         >
           <v-icon class="drag-handle" size="18">mdi-drag-vertical</v-icon>
-          <div class="plan-cue-body"><small>#{{ cue.cueId.replace('cue-', '') }} · 原片 {{ formatTime(cue.startMs) }}</small><p>{{ cue.confirmedText }}</p><div v-if="highlightForCue(cue.cueId) || highlightSuggestionForCue(cue.cueId)" class="highlight-row"><template v-if="highlightSuggestionForCue(cue.cueId)"><span>智能建议</span><button class="highlight-label" :style="highlightChipStyle(highlightSuggestionForCue(cue.cueId)!)" @click.stop="previewHighlightItem(highlightSuggestionForCue(cue.cueId)!)">{{ highlightSuggestionForCue(cue.cueId)!.phrase }}</button><em>{{ highlightSuggestionForCue(cue.cueId)!.position || '左上' }}</em><v-btn size="x-small" variant="text" color="primary" @click.stop="applyHighlight(highlightSuggestionForCue(cue.cueId)!)">替换</v-btn></template><template v-else-if="highlightForCue(cue.cueId)"><button class="highlight-label" :style="highlightChipStyle(highlightForCue(cue.cueId)!)" @click.stop="previewHighlightItem(highlightForCue(cue.cueId)!)">{{ highlightForCue(cue.cueId)!.phrase }}</button><select :value="highlightForCue(cue.cueId)!.style" aria-label="重点大字样式" @click.stop @change="changeHighlightStyle(cue.cueId, ($event.target as HTMLSelectElement).value)"><option v-for="template in highlightTemplates" :key="template.id" :value="template.id">{{ template.label }}</option></select><div class="position-choices"><button v-for="position in highlightPositions" :key="position" :class="{ active: (highlightForCue(cue.cueId)!.position || '左上') === position }" :title="position" @click.stop="changeHighlightPosition(cue.cueId, position)">{{ position }}</button></div><v-btn icon="mdi-close" size="x-small" variant="text" title="移除重点大字" @click.stop="removeHighlight(cue.cueId)" /></template></div></div>
+          <div class="plan-cue-body"><small>#{{ cue.cueId.replace('cue-', '') }} · 原片 {{ formatTime(cue.startMs) }}</small><p>{{ cue.confirmedText }}</p><div class="highlight-row"><template v-if="highlightSuggestionForCue(cue.cueId)"><span>智能建议</span><button class="highlight-label" :style="highlightChipStyle(highlightSuggestionForCue(cue.cueId)!)" @click.stop="previewHighlightItem(highlightSuggestionForCue(cue.cueId)!)">{{ highlightSuggestionForCue(cue.cueId)!.phrase }}</button><em>{{ highlightSuggestionForCue(cue.cueId)!.position || '左上' }}</em><v-btn size="x-small" variant="text" color="primary" @click.stop="applyHighlight(highlightSuggestionForCue(cue.cueId)!)">替换</v-btn></template><template v-else-if="highlightForCue(cue.cueId)"><button class="highlight-label" :style="highlightChipStyle(highlightForCue(cue.cueId)!)" @click.stop="previewHighlightItem(highlightForCue(cue.cueId)!)">{{ highlightForCue(cue.cueId)!.phrase }}</button><select :value="highlightForCue(cue.cueId)!.style" aria-label="重点大字样式" @click.stop @change="changeHighlightStyle(cue.cueId, ($event.target as HTMLSelectElement).value)"><option v-for="template in highlightTemplates" :key="template.id" :value="template.id">{{ template.label }}</option></select><div class="position-choices"><button v-for="position in highlightPositions" :key="position" :class="{ active: (highlightForCue(cue.cueId)!.position || '左上') === position }" :title="position" @click.stop="changeHighlightPosition(cue.cueId, position)">{{ position }}</button></div><v-btn icon="mdi-close" size="x-small" variant="text" title="移除重点大字" @click.stop="removeHighlight(cue.cueId)" /></template><v-btn v-else size="x-small" variant="text" color="primary" prepend-icon="mdi-plus" @click.stop="addHighlight(cue)">添加花字</v-btn></div></div>
           <div class="cue-actions">
             <v-btn icon="mdi-arrow-up" variant="text" size="x-small" :disabled="index === 0" title="上移" @click="move(cue.cueId, -1)" />
             <v-btn icon="mdi-arrow-down" variant="text" size="x-small" :disabled="index === activeCues.length - 1" title="下移" @click="move(cue.cueId, 1)" />
@@ -184,7 +183,8 @@
           <v-divider />
           <div class="settings-engine">
             <div><strong>本地字幕引擎</strong><p>{{ funAsrStatus?.message || '正在检查安装状态…' }}</p><p v-if="funAsrProgress">{{ funAsrProgress }}</p></div>
-            <v-btn :color="funAsrStatus?.state === 'ready' ? undefined : 'primary'" :variant="funAsrStatus?.state === 'ready' ? 'tonal' : 'flat'" :loading="installingFunAsr" :disabled="installingFunAsr || funAsrStatus?.state === 'ready'" @click="installFunAsr">{{ funAsrStatus?.state === 'ready' ? '已安装' : '一键安装' }}</v-btn>
+            <v-btn icon="mdi-refresh" size="small" variant="text" title="扫描本机已有模型" :loading="checkingFunAsr" @click="checkFunAsr" />
+            <v-btn :color="funAsrStatus?.state === 'ready' ? undefined : 'primary'" :variant="funAsrStatus?.state === 'ready' ? 'tonal' : 'flat'" :loading="installingFunAsr" :disabled="installingFunAsr || funAsrStatus?.state === 'ready'" @click="installFunAsr">{{ funAsrStatus?.state === 'ready' ? '已就绪' : '一键安装' }}</v-btn>
           </div>
         </v-card-text>
         <v-card-actions><v-spacer /><v-btn variant="text" @click="settingsOpen = false">关闭</v-btn><v-btn :loading="testingApiKey" variant="tonal" @click="testApiKey">测试连接</v-btn><v-btn color="primary" @click="saveSettings">保存</v-btn></v-card-actions>
@@ -201,7 +201,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { defaultTalkingHeadSubtitleStyle, editTalkingHeadCues, talkingHeadHighlightPositions, talkingHeadHighlightTemplates, talkingHeadMediaUrl, talkingHeadSoundEffects, type TalkingHeadBackgroundMusic, type TalkingHeadCue, type TalkingHeadHighlight, type TalkingHeadHighlightPosition, type TalkingHeadHighlightStyle } from '@/runtime/talkingHeadProject'
+import { defaultTalkingHeadSubtitleStyle, editTalkingHeadCues, isTalkingHeadEditPlanValid, talkingHeadHighlightPositions, talkingHeadHighlightTemplates, talkingHeadMediaUrl, talkingHeadSoundEffects, type TalkingHeadBackgroundMusic, type TalkingHeadCue, type TalkingHeadHighlight, type TalkingHeadHighlightPosition, type TalkingHeadHighlightStyle } from '@/runtime/talkingHeadProject'
 
 const workspace = ref<'captions' | 'structure'>('captions')
 const projectName = ref('未选择项目')
@@ -219,6 +219,7 @@ const textModels = [
   { title: '豆包', value: 'doubao-seed-evolving' },
 ]
 const installingFunAsr = ref(false)
+const checkingFunAsr = ref(false)
 const funAsrProgress = ref('')
 const funAsrStatus = ref<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string } | null>(null)
 const subtitleEngineStatus = ref<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string } | null>(null)
@@ -227,7 +228,7 @@ const transcriptionMessage = ref('')
 const captionMessage = ref('')
 const selectedCueId = ref('cue-01')
 const draggingCueId = ref('')
-const jiucaiheziEditorialPrompt = '你是短视频知识口播的结构编辑助手。只能重排和删除现有字幕片段，绝不改写、合并、拆分、补写或虚构原话。目标是在不改变原意的前提下，让成片更适合抖音知识口播的完播节奏：第一段必须从现有内容中选择最有结果感、反差感、冲突感、明确痛点或核心结论的一句，前 3 至 5 秒直接进入主题，不保留寒暄和铺垫；随后用最少的必要片段兑现开头承诺，按“钩子 - 关键事实或步骤 - 解释或转折 - 明确收束”组织。删除口头禅、无意义停顿、重复解释、重复结论、跑题内容和无法推进理解的片段；保留关键依据、关键步骤、必要转折和能促使观众继续看的信息。没有可靠依据时不制造数据、案例、夸张承诺或绝对化结论。结尾优先保留已有的明确结论、行动建议或回扣开头的内容；原片没有时不要补写。'
+const jiucaiheziEditorialPrompt = '你是口播净稿助手。只按原始顺序删除现有字幕片段，绝不重排、改写、合并、拆分、补写或虚构原话。先把连续的细碎字幕合在脑中理解成完整句子和完整观点，再决定保留或删除，绝不能机械地按单条字幕判断。视频常是照着已经整理好的文案读的：只删除读稿时出现的无意义语气词、卡顿、口误、紧邻重复、说颠倒后立刻自我纠正、同一意思反复说和无法推进理解的片段；保留原文案的观点、事实、步骤、依据、转折、情绪强调和完整句意。删除后相邻保留字幕必须能自然连成话，不能留下半句话、指代不明或逻辑断裂。不要为了钩子、完播、节奏、开头或结尾而删除、移动或调整任何内容。没有可靠依据时不制造数据、案例、夸张承诺或绝对化结论。'
 const editorialNote = ref(jiucaiheziEditorialPrompt)
 const editorialPresetName = ref('')
 const editorialPresets = ref([
@@ -236,12 +237,12 @@ const editorialPresets = ref([
 const planState = ref<'draft' | 'previewed'>('draft')
 const generatingPlan = ref(false)
 const planMessage = ref('')
-const semanticPrompt = ref('你是口播字幕校准助手。只根据上下文修正语音识别错误，不改变原意、语气、句子顺序和信息量。重点处理东北话、方言发音、普通话不标准造成的错别字和同音字；准确规范 AI、编程、产品与英文术语，例如 Prompt、GitHub、Claude、Claude Opus、Gemini、OpenAI、ChatGPT、Cursor、Codex、Seedance、FunASR、FFmpeg、API Key、JSON、Markdown、Vue、Electron、Git 和分支。不确定时保留原识别内容。可修正明显漏字和断句；保留口头禅、重复句、情绪表达及所有原始信息。不删除、不总结、不扩写、不改写为书面语、不调整字幕顺序。每一条字幕必须一一对应原字幕 ID，数量和顺序不得变化。只输出校准后的字幕文本。')
+const semanticPrompt = ref('你是口播字幕校准助手。结合完整上下文修正语音识别错误，不改变原意、语气、句子顺序和信息量。必须主动纠正东北话、方言、连读、平翘舌和轻重音造成的谐音、近音错字；当发音像中文、但上下文属于 AI、编程、模型、产品或英文术语时，必须优先还原为英文正式名称，不能按中文近音字保留。例如“克劳德、克劳的、cla ss、cud”应结合上下文识别为 Claude；“杰米尼、吉米尼、哥们女、man”应结合上下文识别为 Gemini。高优先级术语：Claude、Claude Opus、Gemini、OpenAI、ChatGPT、Codex、Cursor、GitHub、Prompt、API、JSON、Markdown、Vue、Electron、FFmpeg、FunASR、Seedance；即使被识别成中文、拼音碎片、英文碎片或谐音，也必须结合上下文优先还原为正式写法。不要为了补全短句而猜测数量或遗漏内容。可修正明显漏字和断句；保留口头禅、重复句、情绪表达及所有原始信息。不删除、不总结、不扩写、不改写为书面语、不调整字幕顺序。每一条字幕必须一一对应原字幕 ID，数量和顺序不得变化。只输出校准后的字幕文本。')
 const semanticPresetName = ref('')
 const semanticPresets = ref([
   {
     name: '韭菜盒子口播',
-    prompt: '你是口播字幕校准助手。只根据上下文修正语音识别错误，不改变原意、语气、句子顺序和信息量。重点处理东北话、方言发音、普通话不标准造成的错别字和同音字；准确规范 AI、编程、产品与英文术语，例如 Prompt、GitHub、Claude、Claude Opus、Gemini、OpenAI、ChatGPT、Cursor、Codex、Seedance、FunASR、FFmpeg、API Key、JSON、Markdown、Vue、Electron、Git 和分支。不确定时保留原识别内容。可修正明显漏字和断句；保留口头禅、重复句、情绪表达及所有原始信息。不删除、不总结、不扩写、不改写为书面语、不调整字幕顺序。每一条字幕必须一一对应原字幕 ID，数量和顺序不得变化。只输出校准后的字幕文本。',
+    prompt: '你是口播字幕校准助手。结合完整上下文，把口播整理成通顺、自然、适合直接上屏的字幕，不改变原意、观点、事实和信息量。必须主动纠正东北话、方言、连读、平翘舌和轻重音造成的谐音、近音错字；不能因为字面看似中文就保留错误识别。当发音像中文、但上下文属于 AI、编程、模型、产品或英文术语时，必须优先还原为英文正式名称，不能按中文近音字保留。例如“克劳德、克劳的、cla ss、cud”应结合上下文识别为 Claude；“杰米尼、吉米尼、哥们女、man”应结合上下文识别为 Gemini。高优先级术语：Claude、Claude Opus、Gemini、OpenAI、ChatGPT、Codex、Cursor、GitHub、Prompt、API、JSON、Markdown、Vue、Electron、FFmpeg、FunASR、Seedance；即使被识别成中文、拼音碎片、英文碎片或谐音，也必须结合上下文优先还原为正式写法。遇到已整理好的读稿内容，优先还原其完整、准确的原句。不要为了补全短句而猜测数量或遗漏内容。允许删除无意义语气词、卡顿、口误、紧邻重复和明显说颠倒后立刻自我纠正的内容；保留有实际语义、情绪或强调作用的口头表达。可补正明显漏字和断句，但不总结、不扩写、不凭空补内容、不调整字幕顺序。每一条字幕必须一一对应原字幕 ID，数量和顺序不得变化；不得合并或拆分字幕。只输出校准后的字幕文本。',
   },
 ])
 const semanticSuggestionsVisible = ref(false)
@@ -269,7 +270,7 @@ function storedFontFavorites() {
 const fontFavorites = ref<string[]>(storedFontFavorites())
 const subtitleStyle = ref({ ...defaultTalkingHeadSubtitleStyle })
 const backgroundMusic = ref<TalkingHeadBackgroundMusic | undefined>()
-const backgroundMusicVolume = ref(12)
+const backgroundMusicVolume = ref(10)
 const highlightTemplates = talkingHeadHighlightTemplates
 const highlightPositions = talkingHeadHighlightPositions
 const soundEffects = talkingHeadSoundEffects
@@ -285,10 +286,9 @@ const sourceFileName = ref('')
 const sourceFingerprint = ref('')
 const sourceVideo = ref<HTMLVideoElement | null>(null)
 const structureVideo = ref<HTMLVideoElement | null>(null)
-const previewMusic = ref<HTMLAudioElement | null>(null)
-const previewEffectCueIds = new Set<string>()
 const sourceAspect = ref(16 / 9)
 const cuePreviewEndMs = ref<number | null>(null)
+const captionPlayheadMs = ref(0)
 const planCues = ref<Array<TalkingHeadCue & { removed: boolean }>>([])
 const activeCues = computed(() => planCues.value.filter((cue) => !cue.removed))
 const removedCues = computed(() => planCues.value.filter((cue) => cue.removed))
@@ -302,9 +302,7 @@ const finalVideoUrl = computed(() => finalFileName.value && projectRoot.value ? 
 const backgroundMusicUrl = computed(() => backgroundMusic.value && projectRoot.value ? talkingHeadMediaUrl(projectRoot.value, backgroundMusic.value.fileName, '音频') : '')
 const previewOutputFrameStyle = computed(() => {
   const aspect = outputRatio.value === '9:16' ? 9 / 16 : sourceAspect.value
-  return aspect >= 9 / 16
-    ? { width: '100%', height: `${(9 / 16) / aspect * 100}%` }
-    : { width: `${aspect / (9 / 16) * 100}%`, height: '100%' }
+  return aspect >= 9 / 16 ? { width: '100%', height: `${(9 / 16) / aspect * 100}%` } : { width: `${aspect / (9 / 16) * 100}%`, height: '100%' }
 })
 const subtitlePreviewStyle = computed(() => ({ fontFamily: subtitleStyle.value.fontFamily, fontSize: `${Math.round(22 * subtitleStyle.value.fontScale)}px`, fontWeight: subtitleStyle.value.bold ? '700' : '400', color: subtitleStyle.value.fontColor, WebkitTextStroke: subtitleStyle.value.outline ? `${22 * subtitleStyle.value.fontScale * .02}px ${subtitleStyle.value.outlineColor}` : undefined, top: `${subtitleStyle.value.verticalPosition}%`, transform: 'translateY(-100%)' }))
 const previewHighlight = computed(() => selectedPreviewHighlight.value || highlightItems.value[0] || highlightSuggestions.value[0])
@@ -326,12 +324,21 @@ const stopTranscriptionProgress = window.electron.talkingHeadProject.onProgress(
 onBeforeUnmount(() => {
   stopFunAsrProgress()
   stopTranscriptionProgress()
-  stopPreviewAudio()
 })
 
 function formatTime(milliseconds: number) {
   const seconds = Math.floor(milliseconds / 1000)
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+}
+function formatPreciseTime(milliseconds: number) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000))
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}.${String(Math.max(0, Math.round(milliseconds % 1000))).padStart(3, '0')}`
+}
+function syncCaptionPlayhead(event: Event) {
+  const video = event.target
+  if (!(video instanceof HTMLVideoElement)) return
+  captionPlayheadMs.value = Math.round(video.currentTime * 1000)
+  stopCuePreview(event)
 }
 function selectCue(cue: TalkingHeadCue) {
   selectedCueId.value = cue.cueId
@@ -346,55 +353,6 @@ function stopCuePreview(event?: Event) {
   if (!video || cuePreviewEndMs.value === null || video.currentTime * 1000 < cuePreviewEndMs.value) return
   video.pause()
   cuePreviewEndMs.value = null
-}
-function resetPreviewEffects() {
-  previewEffectCueIds.clear()
-}
-function stopPreviewAudio() {
-  previewMusic.value?.pause()
-}
-function unlockPreviewAudio() {
-  const video = structureVideo.value
-  const music = previewMusic.value
-  if (!video || !music || !backgroundMusic.value) return
-  music.volume = backgroundMusicVolume.value / 100
-  music.currentTime = video.currentTime % Math.max(music.duration || 1, 1)
-  // This runs in the play-button gesture, so Chromium grants the preview audio permission.
-  void music.play().catch(() => undefined)
-}
-function startPreviewAudio() {
-  const video = structureVideo.value
-  const music = previewMusic.value
-  if (!video || !music || !backgroundMusic.value) return
-  music.volume = backgroundMusicVolume.value / 100
-  music.currentTime = video.currentTime % Math.max(music.duration || 1, 1)
-  void music.play().catch(() => undefined)
-}
-function syncPreviewAudio() {
-  const video = structureVideo.value
-  if (!video) return
-  stopCuePreview({ target: video } as unknown as Event)
-  const music = previewMusic.value
-  if (music && backgroundMusic.value) {
-    music.volume = backgroundMusicVolume.value / 100
-    const targetTime = video.currentTime % Math.max(music.duration || 1, 1)
-    if (Math.abs(music.currentTime - targetTime) > .35) music.currentTime = targetTime
-    if (!video.paused && music.paused) void music.play().catch(() => undefined)
-  }
-  if (!soundEffectsEnabled.value) return
-  const now = video.currentTime * 1000
-  const highlight = highlightItems.value.find((item) => {
-    const cue = sourceCues.value.find((candidate) => candidate.cueId === item.cueId)
-    return cue && now >= cue.startMs && now < cue.startMs + 250 && !previewEffectCueIds.has(item.cueId)
-  })
-  if (!highlight || !projectRoot.value) return
-  previewEffectCueIds.add(highlight.cueId)
-  const effect = soundEffects.find((candidate) => candidate.style === highlight.style)
-  if (effect) {
-    const audio = new Audio(talkingHeadMediaUrl(projectRoot.value, effect.fileName, '音频'))
-    audio.volume = .5
-    void audio.play().catch(() => undefined)
-  }
 }
 async function chooseProject() {
   const project = await window.electron?.talkingHeadProject?.choose()
@@ -413,13 +371,13 @@ async function loadProjectState() {
   subtitleStyle.value = { ...defaultTalkingHeadSubtitleStyle, ...state.subtitleStyle }
   backgroundMusic.value = state.backgroundMusic
   soundEffectsEnabled.value = state.soundEffectsEnabled !== false
-  backgroundMusicVolume.value = Math.round((state.backgroundMusic?.volume ?? .12) * 100)
+  backgroundMusicVolume.value = Math.round((state.backgroundMusic?.volume ?? .10) * 100)
   highlightItems.value = state.highlightPlan?.sourceFingerprint === state.source?.fingerprint
     ? (state.highlightPlan?.items || []).map((item) => ({ ...item, style: item.style === '爆点黄' ? '爆点黄' : '结论绿' as TalkingHeadHighlightStyle }))
     : []
   highlightSuggestions.value = []
   await window.electron.talkingHeadProject.prepareSoundEffects(projectRoot.value)
-  const plan = state.editPlanStale ? undefined : state.editPlan
+  const plan = !state.editPlanStale && isTalkingHeadEditPlanValid(state.editPlan, state.cues, state.source?.fingerprint) ? state.editPlan : undefined
   const byId = new Map(state.cues.map((cue) => [cue.cueId, cue]))
   planCues.value = (plan?.cueIds || state.cues.map((cue) => cue.cueId)).map((cueId) => ({ ...byId.get(cueId)!, removed: Boolean(plan?.removedCueIds.includes(cueId)) }))
 }
@@ -463,24 +421,31 @@ async function transcribe() {
 }
 async function saveCues() {
   if (!projectRoot.value || !sourceCues.value.length) return
-  await window.electron.talkingHeadProject.saveCues(projectRoot.value, sourceCues.value.map((cue) => ({ ...cue })))
+  const result = await window.electron.talkingHeadProject.saveCues(projectRoot.value, JSON.parse(JSON.stringify(sourceCues.value)))
+  sourceCues.value = result.cues
 }
 async function editCue(action: 'add' | 'split' | 'merge-next' | 'set-start' | 'set-end' | 'delete') {
-  const next = editTalkingHeadCues(sourceCues.value, selectedCueId.value, action, 26_160)
+  const next = editTalkingHeadCues(sourceCues.value, selectedCueId.value, action, captionPlayheadMs.value)
   sourceCues.value = next
   selectedCueId.value = next[0]?.cueId || ''
   await saveCues()
 }
 async function confirmCaptions() {
-  workspace.value = 'structure'
-  planCues.value = sourceCues.value.map((cue) => ({ ...cue, removed: false }))
+  await enterStructureWorkspace()
+}
+async function enterStructureWorkspace() {
   captionMessage.value = ''
+  if (!sourceCues.value.length) {
+    captionMessage.value = '请先识别出至少一条字幕。'
+    return
+  }
   try {
     await saveCues()
     await loadProjectState()
+    workspace.value = 'structure'
+    void previewPlanCue(activeCues.value[0])
   } catch (error) {
     captionMessage.value = `字幕保存失败：${error instanceof Error ? error.message : String(error)}`
-    planMessage.value = captionMessage.value
   }
 }
 async function showProject() {
@@ -489,7 +454,16 @@ async function showProject() {
 async function openSettings() {
   settingsOpen.value = true
   apiKeySaved.value = await window.electron.cloud.hasApiKey()
-  funAsrStatus.value = await window.electron.cloud.funAsrInstallStatus()
+  await checkFunAsr()
+}
+async function checkFunAsr() {
+  checkingFunAsr.value = true
+  try {
+    funAsrStatus.value = await window.electron.cloud.funAsrInstallStatus()
+    subtitleEngineStatus.value = await window.electron.cloud.funAsrSubtitleInstallStatus()
+  } finally {
+    checkingFunAsr.value = false
+  }
 }
 async function saveSettings() {
   if (apiKey.value.trim()) await window.electron.cloud.saveApiKey(apiKey.value)
@@ -572,11 +546,7 @@ function updateSubtitlePosition(value: number) {
   subtitleStyle.value.verticalPosition = Math.abs(value - 76) <= 2 ? 76 : value
   markFinalStale()
 }
-function readSourceAspect(event: Event) {
-  const video = event.target
-  if (video instanceof HTMLVideoElement && video.videoWidth && video.videoHeight)
-    sourceAspect.value = video.videoWidth / video.videoHeight
-}
+function readSourceAspect() { if (structureVideo.value?.videoWidth && structureVideo.value?.videoHeight) sourceAspect.value = structureVideo.value.videoWidth / structureVideo.value.videoHeight }
 function updateSubtitleScale(value: number) {
   subtitleStyle.value.fontScale = Math.abs(value - 1) < .05 ? 1 : value
   markFinalStale()
@@ -589,9 +559,7 @@ function highlightSuggestionForCue(cueId: string) {
 }
 function highlightPreviewStyle(item: TalkingHeadHighlight) {
   const template = highlightTemplates.find((candidate) => candidate.id === item.style)
-  const availableWidth = 78
-  const lengthScale = Math.min(1, availableWidth / Math.max(availableWidth, item.phrase.length * 8))
-  return template ? { color: template.color, background: template.background, fontWeight: '800', fontSize: `${template.scale * 1.7 * subtitleStyle.value.highlightScale * lengthScale}em` } : {}
+  return template ? { color: template.color, background: template.background, fontWeight: '800', fontSize: `${template.scale * 1.7 * subtitleStyle.value.highlightScale}em` } : {}
 }
 function highlightChipStyle(item: TalkingHeadHighlight) {
   const template = highlightTemplates.find((candidate) => candidate.id === item.style)
@@ -646,6 +614,14 @@ async function applyAllHighlights() {
   highlightSuggestions.value = []
   selectedPreviewHighlight.value = highlightItems.value[0] || null
   highlightMessage.value = `已应用 ${highlightItems.value.length} 个花字。`
+  await saveHighlights()
+}
+async function addHighlight(cue: TalkingHeadCue) {
+  const phrase = window.prompt('输入要强调的原句文字：', cue.confirmedText)?.trim()
+  if (!phrase || !cue.confirmedText.includes(phrase)) return
+  const item: TalkingHeadHighlight = { cueId: cue.cueId, phrase, style: '爆点黄', position: '左上' }
+  highlightItems.value = [...highlightItems.value.filter((candidate) => candidate.cueId !== cue.cueId), item]
+  selectedPreviewHighlight.value = item
   await saveHighlights()
 }
 async function removeHighlight(cueId: string) {
@@ -821,7 +797,7 @@ async function openOutputFolder() {
 .panel-heading { min-height: 76px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e6ebe6; }.panel-heading.compact { min-height: 66px; }.panel-heading h1, .caption-actions h2, .export-settings h2 { margin: 0; font-size: 16px; font-weight: 700; }.panel-heading p, .caption-actions p { margin: 4px 0 0; color: #6c766f; font-size: 12px; }
 .caption-table { width: 100%; border-collapse: collapse; font-size: 13px; }.caption-table th { padding: 10px 12px; text-align: left; color: #647067; background: #f8faf8; font-size: 12px; font-weight: 600; }.caption-table td { padding: 11px 12px; border-top: 1px solid #edf0ed; vertical-align: top; line-height: 1.55; }.caption-table tr { cursor: pointer; }.caption-table tr.caption-selected { background: #f2faf3; }.caption-table textarea { width: 100%; min-height: 42px; padding: 5px; border: 1px solid #d6ded7; border-radius: 4px; resize: vertical; color: inherit; font: inherit; }
 .caption-actions { padding: 0 16px; }.inspector-section { padding: 16px 0; border-bottom: 1px solid #e4e9e4; }.inspector-section h2 { margin-bottom: 10px; font-size: 15px; }.inspector-section p { margin-bottom: 10px; }.engine-status { min-height: 18px; color: #68736a; }.engine-failed { color: #b3261e; }.engine-ready { color: #176b37; }.calibration-status { color: #68736a; line-height: 1.45; }.inspector-confirm { border-bottom: 0; }.semantic-prompt-label { display: block; margin: 12px 0 6px; color: #7a857c; font-size: 12px; }.semantic-prompt { box-sizing: border-box; width: 100%; min-height: 94px; padding: 8px; border: 1px solid #d6ded7; border-radius: 4px; resize: vertical; color: inherit; font: inherit; font-size: 12px; line-height: 1.5; }.semantic-prompt:focus { outline: 2px solid #c6e8cd; border-color: #62a571; }.semantic-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }.semantic-presets span { width: 100%; color: #7a857c; font-size: 12px; }.semantic-presets button { border: 1px solid #dbe5dc; border-radius: 4px; background: #fff; padding: 5px 7px; color: #3d6f49; font: inherit; font-size: 12px; cursor: pointer; }.semantic-presets button.selected { border-color: #3d8b52; background: #edf8ef; }.preset-save { display: flex; align-items: center; gap: 4px; margin-top: 8px; }.preset-save input { min-width: 0; flex: 1; height: 30px; padding: 0 8px; border: 1px solid #d6ded7; border-radius: 4px; color: inherit; font: inherit; font-size: 12px; }.preset-save input:focus { outline: 2px solid #c6e8cd; border-color: #62a571; }
-.structure-workspace { min-height: 0; display: grid; grid-template-columns: minmax(300px, 360px) minmax(420px, 1.45fr) minmax(290px, .85fr); gap: 12px; padding: 12px; }.final-preview-panel { padding: 10px; }.final-video-stage { position: relative; width: 100%; aspect-ratio: 9 / 16; align-self: start; display: grid; place-content: center; gap: 8px; overflow: hidden; background: #1d2420; color: #d8e2da; text-align: center; }.preview-video { width: 100%; height: 100%; object-fit: contain; }.preview-output-frame { position: absolute; inset: 0; margin: auto; border: 2px solid #27a653; box-sizing: border-box; pointer-events: none; }.subtitle-style-preview { position: absolute; left: 10%; right: 10%; z-index: 1; color: #fff; line-height: 1.35; pointer-events: none; }.focus-word-preview { position: absolute; top: 22%; left: 10%; z-index: 2; max-width: 78%; padding: 5px 9px; border-radius: 3px; line-height: 1.12; letter-spacing: 0; box-shadow: 2px 3px 0 rgba(0,0,0,.5); animation: focus-word-in .22s cubic-bezier(.2,.8,.2,1); }.focus-右上 { left: auto; right: 10%; }.focus-左中 { top: 43%; }.focus-右中 { top: 43%; left: auto; right: 10%; }.focus-上中 { top: 16%; left: 50%; transform: translateX(-50%); text-align: center; }.final-video-stage small { color: #b8c6ba; font-size: 12px; }.plan-cue p { margin: 4px 0 0; line-height: 1.55; font-size: 13px; }.highlight-row { align-items: center; min-height: 28px; }.highlight-label { max-width: 168px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.position-choices { display: inline-flex; gap: 3px; }.position-choices button { border: 1px solid #d6ded7; border-radius: 3px; background: #fff; padding: 2px 4px; color: #68736a; font: inherit; font-size: 10px; cursor: pointer; }.position-choices button.active { border-color: #219653; background: #edf8ef; color: #176b37; }.highlight-settings h2 { display: flex; justify-content: space-between; align-items: center; }.highlight-settings h2 small { color: #68736a; font-size: 12px; font-weight: 500; }.font-scale { min-height: 46px; margin-top: 10px; }.position-slider { height: 48px; margin-top: 12px; }
+.structure-workspace { min-height: 0; display: grid; grid-template-columns: minmax(300px, 360px) minmax(420px, 1.45fr) minmax(290px, .85fr); gap: 12px; padding: 12px; }.final-preview-panel { padding: 10px; }.final-video-stage { position: relative; width: 100%; aspect-ratio: 9 / 16; align-self: start; display: grid; place-content: center; gap: 8px; overflow: hidden; background: #1d2420; color: #d8e2da; text-align: center; }.preview-video { width: 100%; height: 100%; object-fit: contain; }.preview-output-frame { position: absolute; inset: 0; margin: auto; border: 2px solid #27a653; box-sizing: border-box; pointer-events: none; }.subtitle-style-preview { position: absolute; left: 10%; right: 10%; z-index: 1; color: #fff; line-height: 1.35; pointer-events: none; }.focus-word-preview { position: absolute; top: 22%; left: 10%; z-index: 2; max-width: 78%; padding: 5px 9px; border-radius: 3px; line-height: 1.12; box-shadow: 2px 3px 0 rgba(0,0,0,.5); }.focus-右上 { left: auto; right: 10%; }.focus-左中 { top: 43%; }.focus-右中 { top: 43%; left: auto; right: 10%; }.focus-上中 { top: 16%; left: 50%; transform: translateX(-50%); text-align: center; }.final-video-stage small { color: #b8c6ba; font-size: 12px; }.plan-cue p { margin: 4px 0 0; line-height: 1.55; font-size: 13px; }.highlight-row { align-items: center; min-height: 28px; }.highlight-label { max-width: 168px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.position-choices { display: inline-flex; gap: 3px; }.position-choices button { border: 1px solid #d6ded7; border-radius: 3px; background: #fff; padding: 2px 4px; color: #68736a; font: inherit; font-size: 10px; cursor: pointer; }.position-choices button.active { border-color: #219653; background: #edf8ef; color: #176b37; }.highlight-settings h2 { display: flex; justify-content: space-between; align-items: center; }.highlight-settings h2 small { color: #68736a; font-size: 12px; font-weight: 500; }.font-scale { min-height: 46px; margin-top: 10px; }.position-slider { height: 48px; margin-top: 12px; }
 .plan-panel { padding-bottom: 12px; }.plan-section { display: flex; justify-content: space-between; padding: 14px 16px 8px; color: #176b37; font-size: 13px; font-weight: 700; }.plan-section small { color: #89938b; font-size: 11px; font-weight: 400; }.plan-cue { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 10px; border: 1px solid #dfe5df; border-radius: 5px; background: #fff; cursor: grab; }.plan-cue:hover { border-color: #86bd91; }.drag-handle { color: #a0aaa2; }.plan-cue-body { flex: 1; min-width: 0; }.plan-cue-body small { color: #708073; font-size: 11px; }.cue-actions { display: flex; }.highlight-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 7px; color: #718075; font-size: 11px; }.highlight-row select { min-width: 72px; height: 24px; border: 1px solid #d6ded7; border-radius: 3px; background: #fff; color: inherit; font: inherit; font-size: 11px; }.highlight-label { display: inline-block; padding: 1px 4px; border: 0; background: transparent; line-height: 1.35; cursor: pointer; font: inherit; }.removed-cues { margin: 14px 12px 0; border-top: 1px solid #e8ece8; color: #69756b; font-size: 12px; }.removed-cues summary { padding: 11px 0; cursor: pointer; }.removed-cue { display: flex; align-items: center; gap: 8px; padding: 7px 0; text-decoration: line-through; }.removed-cue span { flex: 1; min-width: 0; }
 .instruction-panel { padding: 0 14px 14px; }.instruction-panel .panel-heading { margin: 0 -14px; }.instruction-input { box-sizing: border-box; width: 100%; min-height: 150px; margin: 14px 0 10px; padding: 10px; border: 1px solid #d6ded7; border-radius: 5px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.55; }.instruction-input:focus { outline: 2px solid #c6e8cd; border-color: #62a571; }.suggestion-list, .personal-presets { display: flex; flex-wrap: wrap; gap: 6px; }.suggestion-list { margin-bottom: 10px; }.suggestion-list span, .personal-presets span { width: 100%; color: #7a857c; font-size: 12px; }.suggestion-list button, .personal-presets button { border: 1px solid #dbe5dc; border-radius: 4px; background: #fff; padding: 5px 7px; color: #3d6f49; font: inherit; font-size: 12px; cursor: pointer; }.suggestion-list button.selected, .personal-presets button.selected { border-color: #3d8b52; background: #edf8ef; }
 .export-settings { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e1e7e1; }.export-settings h2 { margin-bottom: 8px; font-size: 15px; }.ratio-toggle { display: flex; width: 100%; }.ratio-toggle :deep(.v-btn) { flex: 1; }.font-scale { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #68736a; font-size: 12px; }.font-scale span { flex: 0 0 52px; }.font-scale :deep(.v-slider) { flex: 1; }.position-slider { display: grid; grid-template-columns: 38px 1fr 38px; align-items: center; height: 40px; margin-top: 8px; color: #68736a; font-size: 11px; }.position-slider span:last-child { text-align: right; }.position-slider :deep(.v-slider) { min-width: 0; }.style-actions { display: flex; gap: 8px; margin-top: 8px; }.style-actions .v-btn { flex: 1; }.color-swatches { display: flex; gap: 14px; margin-top: 10px; }.color-swatches label { display: inline-flex; align-items: center; gap: 6px; color: #68736a; font-size: 12px; }.color-swatches input { width: 28px; height: 24px; padding: 1px; border: 1px solid #cfd8d0; border-radius: 4px; cursor: pointer; }.music-settings, .highlight-settings { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e1e7e1; }.music-settings h2, .highlight-settings h2 { margin-bottom: 8px; font-size: 15px; }.music-file { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: #526157; font-size: 12px; }.music-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.music-settings audio { width: 100%; height: 32px; margin: 6px 0; }.music-volume { display: flex; align-items: center; gap: 8px; color: #68736a; font-size: 12px; }.music-volume span { flex: 0 0 58px; }.music-volume :deep(.v-slider) { flex: 1; }.highlight-template-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 11px; font-weight: 700; }.export-status { display: flex; justify-content: space-between; margin: 12px 0; color: #68736a; font-size: 12px; }.export-status strong { color: #263129; font-size: 14px; }

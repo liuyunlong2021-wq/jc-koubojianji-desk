@@ -17,7 +17,71 @@ export interface TalkingHeadCue {
   endMs: number
   recognizedText: string
   confirmedText: string
+  words?: Array<{ text: string; startMs: number; endMs: number }>
   deleted?: boolean
+}
+
+/** Split at word boundaries and enforce the product's 15-character subtitle limit. */
+export function splitTalkingHeadCues(cues: TalkingHeadCue[], maxChars = 15): TalkingHeadCue[] {
+  const limit = Math.max(1, Math.floor(maxChars))
+  return cues.flatMap((cue) => {
+    const words = cue.words?.filter((word) => word.text.trim() && word.endMs > word.startMs)
+    const wordsMatchText = words?.map((word) => word.text).join('') === cue.confirmedText
+    if (!wordsMatchText) {
+      const chars = [...cue.confirmedText]
+      if (chars.length <= limit) return [cue]
+      return Array.from({ length: Math.ceil(chars.length / limit) }, (_, index) => {
+        const start = index * limit
+        const text = chars.slice(start, start + limit).join('')
+        const ratioStart = start / chars.length
+        const ratioEnd = Math.min(1, (start + text.length) / chars.length)
+        return { ...cue, startMs: Math.round(cue.startMs + (cue.endMs - cue.startMs) * ratioStart), endMs: Math.max(cue.startMs + 1, Math.round(cue.startMs + (cue.endMs - cue.startMs) * ratioEnd)), recognizedText: text, confirmedText: text, words: undefined }
+      })
+    }
+    if (!words?.length) {
+      const chars = [...cue.confirmedText]
+      if (chars.length <= limit) return [cue]
+      return Array.from({ length: Math.ceil(chars.length / limit) }, (_, index) => {
+        const start = index * limit
+        const text = chars.slice(start, start + limit).join('')
+        const ratioStart = start / chars.length
+        const ratioEnd = Math.min(1, (start + text.length) / chars.length)
+        return { ...cue, startMs: Math.round(cue.startMs + (cue.endMs - cue.startMs) * ratioStart), endMs: Math.round(cue.startMs + (cue.endMs - cue.startMs) * ratioEnd), recognizedText: text, confirmedText: text, words: undefined }
+      })
+    }
+    const pieces: TalkingHeadCue[] = []
+    let bucket: typeof words = []
+    let length = 0
+    const flush = () => {
+      if (!bucket.length) return
+      const text = bucket.map((word) => word.text).join('')
+      pieces.push({ ...cue, startMs: bucket[0].startMs, endMs: bucket.at(-1)!.endMs, recognizedText: text, confirmedText: text, words: [...bucket] })
+      bucket = []
+      length = 0
+    }
+    for (const word of words) {
+      const wordLength = [...word.text].length
+      if (bucket.length && length + wordLength > limit) flush()
+      if (wordLength > limit) {
+        const chars = [...word.text]
+        for (let index = 0; index < chars.length; index += limit) {
+          const part = chars.slice(index, index + limit).join('')
+          const startMs = Math.round(word.startMs + (word.endMs - word.startMs) * index / chars.length)
+          const endMs = Math.round(word.startMs + (word.endMs - word.startMs) * Math.min(chars.length, index + part.length) / chars.length)
+          pieces.push({ ...cue, startMs, endMs: Math.max(startMs + 1, endMs), recognizedText: part, confirmedText: part, words: [{ text: part, startMs, endMs: Math.max(startMs + 1, endMs) }] })
+        }
+        continue
+      }
+      bucket.push(word)
+      length += wordLength
+    }
+    flush()
+    return pieces.length ? pieces : [cue]
+  })
+}
+
+export function normalizeTalkingHeadCues(cues: TalkingHeadCue[]) {
+  return cues.map((cue, index) => ({ ...cue, cueId: `cue-${String(index + 1).padStart(3, '0')}` }))
 }
 
 export interface TalkingHeadEditPlan {
@@ -74,6 +138,22 @@ export interface TalkingHeadSubtitleStyle {
 
 export const defaultTalkingHeadSubtitleStyle: TalkingHeadSubtitleStyle = { fontFamily: 'Arial', fontScale: 1, verticalPosition: 76, bold: true, outline: true, fontColor: '#FFFFFF', outlineColor: '#000000', highlightScale: 1 }
 
+export function talkingHeadHighlightLayout(highlight: TalkingHeadHighlight, style: Partial<TalkingHeadSubtitleStyle> = {}, resolution = { width: 1080, height: 1920 }) {
+  const normalized = normalizeTalkingHeadSubtitleStyle(style)
+  const template = talkingHeadHighlightTemplates.find((candidate) => candidate.id === highlight.style)!
+  const position = highlight.position || '左上'
+  const anchor = ({ 左上: { x: .1, y: .22, alignment: 7, width: .42 }, 右上: { x: .9, y: .22, alignment: 9, width: .42 }, 左中: { x: .1, y: .43, alignment: 7, width: .42 }, 右中: { x: .9, y: .43, alignment: 9, width: .42 }, 上中: { x: .5, y: .16, alignment: 8, width: .78 } } as const)[position]
+  const characters = [...highlight.phrase]
+  const preferredColumns = Math.max(2, Math.ceil(characters.length / 2))
+  const baseSize = Math.round(resolution.height * .052 * normalized.fontScale * template.scale * 1.65 * normalized.highlightScale)
+  const borderRatio = highlight.style === '爆点黄' ? .24 : .045
+  const fontSize = Math.min(baseSize, Math.floor((resolution.width * anchor.width - 36) / (preferredColumns * .95 + borderRatio * 2)))
+  const border = highlight.style === '爆点黄' ? Math.round(fontSize * borderRatio) : Math.max(3, Math.round(fontSize * borderRatio))
+  const columns = Math.max(2, Math.floor((resolution.width * anchor.width - border * 2 - 36) / (fontSize * .95)))
+  const text = characters.map((character, index) => `${index > 0 && index % columns === 0 ? '\\N' : ''}${character}`).join('')
+  return { ...anchor, fontSize, border, text }
+}
+
 export interface TalkingHeadComposeOptions {
   ratio: TalkingHeadOutputRatio
   burnSubtitles: boolean
@@ -93,6 +173,15 @@ export interface TalkingHeadProjectState {
   soundEffectsEnabled?: boolean
   subtitleStyle?: TalkingHeadSubtitleStyle
   editPlanStale: boolean
+}
+
+export function isTalkingHeadEditPlanValid(plan: TalkingHeadEditPlan | undefined, cues: TalkingHeadCue[], sourceFingerprint: string | undefined) {
+  if (!plan || !sourceFingerprint || plan.sourceFingerprint !== sourceFingerprint || plan.cueIds.length !== cues.length) return false
+  const cueIds = new Set(cues.map((cue) => cue.cueId))
+  return new Set(plan.cueIds).size === cues.length
+    && plan.cueIds.every((cueId) => cueIds.has(cueId))
+    && new Set(plan.removedCueIds).size === plan.removedCueIds.length
+    && plan.removedCueIds.every((cueId) => cueIds.has(cueId))
 }
 
 export function validateTalkingHeadCues(cues: TalkingHeadCue[]) {
@@ -148,8 +237,9 @@ export function formatTalkingHeadAss(cues: Array<{ cueId?: string; startMs: numb
   }
   const events = cues.map((cue) => {
     if (!Number.isFinite(cue.startMs) || !Number.isFinite(cue.endMs) || cue.endMs <= cue.startMs) throw new Error('成片字幕时间轴无效')
-    const breaks = lineBreaks(cue.text)
-    const text = [...cue.text].map((character, index) => {
+    const plainText = cue.text.replace(/[，。！？；：、,.!?;:]/g, '')
+    const breaks = lineBreaks(plainText)
+    const text = [...plainText].map((character, index) => {
       const before = breaks.has(index) ? '\\N' : ''
       return `${before}${escapeAssText(character)}`
     }).join('')
@@ -159,12 +249,11 @@ export function formatTalkingHeadAss(cues: Array<{ cueId?: string; startMs: numb
     const cue = cues.find((candidate) => candidate.cueId === highlight.cueId)
     const template = talkingHeadHighlightTemplates.find((candidate) => candidate.id === highlight.style)
     if (!cue || !template || !cue.text.includes(highlight.phrase)) return []
-    // Keep preview and rendered video aligned to the same output-safe position.
-    const anchor = ({ 左上: { x: .1, y: .22, alignment: 7 }, 右上: { x: .9, y: .22, alignment: 9 }, 左中: { x: .1, y: .43, alignment: 7 }, 右中: { x: .9, y: .43, alignment: 9 }, 上中: { x: .5, y: .16, alignment: 8 } } as const)[highlight.position || '左上']
-    const size = Math.round(fontSize * template.scale * 1.65 * style.highlightScale)
+    const layout = talkingHeadHighlightLayout(highlight, style, { width, height })
+    const size = layout.fontSize
     const tag = template.id === '爆点黄'
-    const effect = `{\\an${anchor.alignment}\\pos(${Math.round(width * anchor.x)},${Math.round(height * anchor.y + 24)})\\alpha&H35&\\fscx78\\fscy78\\t(0,220,\\alpha&H00&\\fscx100\\fscy100\\pos(${Math.round(width * anchor.x)},${Math.round(height * anchor.y)}))\\fs${size}\\b1\\c${assColor(template.color)}\\3c${assColor(tag ? template.background : '#000000')}\\bord${tag ? Math.round(size * .24) : Math.max(3, Math.round(size * .045))}\\shad${tag ? 0 : Math.max(2, Math.round(size * .03))}\\4c&H66000000&}`
-    return `Dialogue: 1,${formatAssTime(cue.startMs)},${formatAssTime(cue.endMs)},Default,,0,0,0,,${effect}${escapeAssText(highlight.phrase)}`
+    const effect = `{\\an${layout.alignment}\\pos(${Math.round(width * layout.x)},${Math.round(height * layout.y + 24)})\\alpha&H35&\\fscx78\\fscy78\\t(0,220,\\alpha&H00&\\fscx100\\fscy100\\pos(${Math.round(width * layout.x)},${Math.round(height * layout.y)}))\\fs${size}\\b1\\c${assColor(template.color)}\\3c${assColor(tag ? template.background : '#000000')}\\bord${layout.border}\\shad${tag ? 0 : Math.max(2, Math.round(size * .03))}\\4c&H66000000&}`
+    return `Dialogue: 1,${formatAssTime(cue.startMs)},${formatAssTime(cue.endMs)},Default,,0,0,0,,${effect}${layout.text.split('\\N').map(escapeAssText).join('\\N')}`
   })
   return `[Script Info]\nScriptType: v4.00+\nPlayResX: ${width}\nPlayResY: ${height}\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Default,${style.fontFamily},${fontSize},${assColor(style.fontColor)},${assColor(style.fontColor)},${assColor(style.outlineColor)},&HFF000000,${style.bold ? -1 : 0},0,0,0,100,100,0,0,1,${style.outline ? Math.max(1, Math.round(fontSize * .02)) : 0},0,2,64,64,0,1\n\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n${[...events, ...highlightEvents].join('\n')}\n`
 }
@@ -183,13 +272,23 @@ export function editTalkingHeadCues(cues: TalkingHeadCue[], cueId: string, actio
   if (action === 'merge-next') {
     const next = cues[index + 1]
     if (!next) throw new Error('没有可合并的下一条字幕')
-    return [...cues.slice(0, index), { ...current, endMs: next.endMs, recognizedText: `${current.recognizedText}${next.recognizedText}`, confirmedText: `${current.confirmedText}${next.confirmedText}` }, ...cues.slice(index + 2)]
+    return [...cues.slice(0, index), { ...current, endMs: next.endMs, recognizedText: `${current.recognizedText}${next.recognizedText}`, confirmedText: `${current.confirmedText}${next.confirmedText}`, words: current.words || next.words ? [...(current.words || []), ...(next.words || [])] : undefined }, ...cues.slice(index + 2)]
   }
   if (action === 'split') {
-    const split = Math.max(current.startMs + 1, Math.min(playheadMs, current.endMs - 1))
+    const words = current.words?.filter((word) => word.endMs > current.startMs && word.startMs < current.endMs)
+    const boundary = words && words.length > 1
+      ? Array.from({ length: words.length - 1 }, (_, position) => position + 1).reduce((best, position) => {
+        const candidate = Math.round((words[position - 1].endMs + words[position].startMs) / 2)
+        const selected = Math.round((words[best - 1].endMs + words[best].startMs) / 2)
+        return Math.abs(candidate - playheadMs) < Math.abs(selected - playheadMs) ? position : best
+      }, 1)
+      : undefined
+    const split = boundary ? Math.round((words![boundary - 1].endMs + words![boundary].startMs) / 2) : Math.max(current.startMs + 1, Math.min(playheadMs, current.endMs - 1))
     if (split <= current.startMs || split >= current.endMs) throw new Error('播放头不在所选字幕内部')
-    const half = Math.ceil(current.confirmedText.length / 2)
-    return [...cues.slice(0, index), { ...current, endMs: split, recognizedText: current.recognizedText.slice(0, half), confirmedText: current.confirmedText.slice(0, half) }, { ...current, cueId: `cue-${String(cues.length + 1).padStart(3, '0')}`, startMs: split, recognizedText: current.recognizedText.slice(half), confirmedText: current.confirmedText.slice(half) }, ...cues.slice(index + 1)]
+    const splitText = (text: string, ratio: number) => Math.max(1, Math.min(text.length - 1, Math.round(text.length * ratio)))
+    const recognizedLength = boundary ? words!.slice(0, boundary).reduce((total, word) => total + word.text.length, 0) : splitText(current.recognizedText, (split - current.startMs) / (current.endMs - current.startMs))
+    const confirmedLength = splitText(current.confirmedText, recognizedLength / Math.max(1, current.recognizedText.length))
+    return [...cues.slice(0, index), { ...current, endMs: split, recognizedText: current.recognizedText.slice(0, recognizedLength), confirmedText: current.confirmedText.slice(0, confirmedLength), words: boundary ? words!.slice(0, boundary) : undefined }, { ...current, cueId: `cue-${String(cues.length + 1).padStart(3, '0')}`, startMs: split, recognizedText: current.recognizedText.slice(recognizedLength), confirmedText: current.confirmedText.slice(confirmedLength), words: boundary ? words!.slice(boundary) : undefined }, ...cues.slice(index + 1)]
   }
   if (action === 'set-start') {
     const startMs = Math.max(previousEnd, Math.min(playheadMs, current.endMs - 1))

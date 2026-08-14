@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { app } from 'electron'
 import { executeFFmpeg } from './ffmpeg/index.ts'
 import { assertVideoTranslationSource, getRunDir, relativeRunAsset } from './media-workspace.ts'
+import { funAsrModelRoot, funAsrRuntimeRoot } from './funasr-installer.ts'
 
 const runFile = promisify(execFile)
 const FUNASR_ENGINE = 'funasr-1.4.1-sensevoice-small-ct-punc-v3'
@@ -34,14 +35,7 @@ interface FunAsrTranscript {
 }
 
 function funAsrHome() {
-  if (process.env.FUNASR_HOME) return path.resolve(process.env.FUNASR_HOME)
-  const mainlineRoot = path.join(app.getPath('appData'), 'jc-koubojianji-desk')
-  const modelRoot = path.join(mainlineRoot, 'models', 'funasr', 'models')
-  if (
-    fs.existsSync(path.join(mainlineRoot, 'runtime', 'funasr-venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')) &&
-    ['iic--SenseVoiceSmall', 'iic--speech_fsmn_vad_zh-cn-16k-common-pytorch', 'iic--punc_ct-transformer_cn-en-common-vocab471067-large', 'iic--speech_campplus_sv_zh-cn_16k-common'].every((name) => fs.existsSync(path.join(modelRoot, name, 'snapshots', 'master')))
-  ) return mainlineRoot
-  return app.getPath('userData')
+  return funAsrRuntimeRoot()
 }
 
 function pythonPath() {
@@ -61,7 +55,7 @@ function runtimeScriptPath() {
 }
 
 function modelRoot() {
-  return path.join(funAsrHome(), 'models', 'funasr')
+  return funAsrModelRoot()
 }
 
 async function fileHash(filePath: string) {
