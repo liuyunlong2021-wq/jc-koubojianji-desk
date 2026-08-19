@@ -44,13 +44,13 @@ function friendlyError(error: unknown) {
   return new Error(detail ? `云端请求失败：${detail}` : `云端请求失败 (${error.response?.status || '网络错误'})`)
 }
 
-async function request(system: string, content: string | Record<string, unknown>[], model: TextModel, json = true) {
+async function request(system: string, content: string | Record<string, unknown>[], model: TextModel, json = true, maxTokens = 16000) {
   if (!TEXT_MODELS.includes(model)) throw new Error('不支持的文本模型')
   try {
     const key = await readApiKey()
     const response = await axios.post(`${API_ORIGIN}/v1/chat/completions`, {
       model, messages: [{ role: 'system', content: system }, { role: 'user', content }],
-      ...(json ? { response_format: { type: 'json_object' } } : {}), temperature: 0.2, max_tokens: 16000,
+      ...(json ? { response_format: { type: 'json_object' } } : {}), temperature: 0.2, max_tokens: maxTokens,
     }, { timeout: 300_000, headers: { Authorization: `Bearer ${key}`, 'x-api-key': key } })
     const output = String(response.data?.choices?.[0]?.message?.content || '').trim()
     if (!output) throw new Error('模型没有返回内容')
@@ -67,7 +67,10 @@ function json(text: string) {
   }
 }
 
-export async function testApiKey() { await readApiKey(); return true }
+export async function testApiKey(textModel: TextModel) {
+  await request('你是连接测试助手。', '只回复 OK', textModel, false, 8)
+  return true
+}
 
 export async function calibrateTalkingHeadSubtitles(params: { textModel: TextModel; instruction: string; cues: Array<{ cueId: string; text: string }> }) {
   if (!params.instruction.trim() || !params.cues.length) throw new Error('字幕校准参数无效')

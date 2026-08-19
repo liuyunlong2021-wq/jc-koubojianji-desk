@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electron', {
   statTrack: (params: StatEventParams) => ipcRenderer.invoke('stat-track', params),
   talkingHeadProject: {
     choose: () => ipcRenderer.invoke('talking-head-project-choose'),
+    rename: (rootPath: string, name: string) => ipcRenderer.invoke('talking-head-project-rename', rootPath, name),
     show: (rootPath: string) => ipcRenderer.invoke('talking-head-project-show', rootPath),
     showOutput: (rootPath: string) => ipcRenderer.invoke('talking-head-output-show', rootPath),
     chooseSource: (rootPath?: string) => ipcRenderer.invoke('talking-head-source-choose', rootPath),
@@ -40,6 +41,7 @@ contextBridge.exposeInMainWorld('electron', {
     listFonts: () => ipcRenderer.invoke('talking-head-fonts-list'),
     chooseBackgroundMusic: (rootPath: string) => ipcRenderer.invoke('talking-head-background-music-choose', rootPath),
     saveBackgroundMusic: (rootPath: string, music?: TalkingHeadBackgroundMusic) => ipcRenderer.invoke('talking-head-background-music-save', rootPath, music),
+    saveSubtitleStyle: (rootPath: string, style: TalkingHeadComposeOptions['subtitleStyle']) => ipcRenderer.invoke('talking-head-subtitle-style-save', rootPath, style),
     setSoundEffectsEnabled: (rootPath: string, enabled: boolean) => ipcRenderer.invoke('talking-head-sound-effects-enabled', rootPath, enabled),
     prepareSoundEffects: (rootPath: string) => ipcRenderer.invoke('talking-head-sound-effects-prepare', rootPath),
     saveCues: (rootPath: string, cues: TalkingHeadCue[]) => ipcRenderer.invoke('talking-head-cues-save', rootPath, cues),
@@ -59,9 +61,11 @@ contextBridge.exposeInMainWorld('electron', {
   cloud: {
     hasApiKey: () => ipcRenderer.invoke('cloud-has-api-key'),
     saveApiKey: (apiKey: string) => ipcRenderer.invoke('cloud-save-api-key', apiKey),
-    testApiKey: () => ipcRenderer.invoke('cloud-test-api-key'),
+    testApiKey: (textModel: TextModel) => ipcRenderer.invoke('cloud-test-api-key', textModel),
     funAsrInstallStatus: () => ipcRenderer.invoke('funasr-install-status'),
     funAsrSubtitleInstallStatus: () => ipcRenderer.invoke('funasr-subtitle-install-status'),
+    scanFunAsr: () => ipcRenderer.invoke('funasr-scan'),
+    ffmpegStatus: () => ipcRenderer.invoke('ffmpeg-status'),
     installFunAsr: () => ipcRenderer.invoke('funasr-install'),
     onFunAsrInstallProgress: (listener: (message: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, message: string) => listener(message)

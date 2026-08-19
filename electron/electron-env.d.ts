@@ -25,6 +25,7 @@ interface Window {
     statTrack: (params: import('./types').StatEventParams) => Promise<void>
     talkingHeadProject: {
       choose: () => Promise<{ rootPath: string; name: string } | null>
+      rename: (rootPath: string, name: string) => Promise<{ rootPath: string; name: string }>
       show: (rootPath: string) => Promise<string>
       showOutput: (rootPath: string) => Promise<string>
       chooseSource: (rootPath?: string) => Promise<{ rootPath: string; name: string; fileName: string; fingerprint: string; durationMs: number } | null>
@@ -34,6 +35,7 @@ interface Window {
       listFonts: () => Promise<string[]>
       chooseBackgroundMusic: (rootPath: string) => Promise<import('../src/runtime/talkingHeadProject').TalkingHeadBackgroundMusic | null>
       saveBackgroundMusic: (rootPath: string, music?: import('../src/runtime/talkingHeadProject').TalkingHeadBackgroundMusic) => Promise<{ backgroundMusic?: import('../src/runtime/talkingHeadProject').TalkingHeadBackgroundMusic }>
+      saveSubtitleStyle: (rootPath: string, style: import('../src/runtime/talkingHeadProject').TalkingHeadSubtitleStyle) => Promise<{ subtitleStyle: import('../src/runtime/talkingHeadProject').TalkingHeadSubtitleStyle }>
       setSoundEffectsEnabled: (rootPath: string, enabled: boolean) => Promise<boolean>
       prepareSoundEffects: (rootPath: string) => Promise<Array<{ style: import('../src/runtime/talkingHeadProject').TalkingHeadHighlightStyle; fileName: string; label: string }>>
       saveCues: (rootPath: string, cues: import('../src/runtime/talkingHeadProject').TalkingHeadCue[]) => Promise<{ cues: import('../src/runtime/talkingHeadProject').TalkingHeadCue[] }>
@@ -49,9 +51,11 @@ interface Window {
     cloud: {
       hasApiKey: () => Promise<boolean>
       saveApiKey: (apiKey: string) => Promise<boolean>
-      testApiKey: () => Promise<boolean>
+      testApiKey: (textModel: import('./types').TextModel) => Promise<boolean>
       funAsrInstallStatus: () => Promise<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string }>
       funAsrSubtitleInstallStatus: () => Promise<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string }>
+      scanFunAsr: () => Promise<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string }>
+      ffmpegStatus: () => Promise<{ state: 'ready' | 'failed'; message: string }>
       installFunAsr: () => Promise<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string }>
       onFunAsrInstallProgress: (listener: (message: string) => void) => () => void
     }

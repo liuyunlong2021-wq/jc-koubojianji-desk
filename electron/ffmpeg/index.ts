@@ -36,6 +36,24 @@ const ffmpegPath: string = isDev
   ? require('ffmpeg-static')
   : (require('ffmpeg-static') as string).replace('app.asar', 'app.asar.unpacked')
 
+export async function getFFmpegStatus() {
+  try {
+    fs.accessSync(ffmpegPath, fs.constants.X_OK)
+    const [{ stdout: filters }, { stdout: encoders }] = await Promise.all([
+      executeFFmpeg(['-hide_banner', '-filters']),
+      executeFFmpeg(['-hide_banner', '-encoders']),
+    ])
+    const missing = [
+      ...['subtitles', 'trim', 'atrim', 'concat', 'scale', 'overlay', 'amix', 'alimiter', 'adelay', 'aresample'].filter((name) => !new RegExp(`\\b${name}\\b`).test(filters)),
+      ...['libx264', 'aac'].filter((name) => !new RegExp(`\\b${name}\\b`).test(encoders)),
+    ]
+    if (missing.length) throw new Error(`缺少导出组件：${missing.join('、')}`)
+    return { state: 'ready' as const, message: '内置 FFmpeg、字幕滤镜、视频和音频编码组件均已验证' }
+  } catch (error) {
+    return { state: 'failed' as const, message: `内置 FFmpeg 不可用：${error instanceof Error ? error.message : String(error)}` }
+  }
+}
+
 const OUTPUT_SIZES = {
   '9:16': [1080, 1920],
   '16:9': [1920, 1080],

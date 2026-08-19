@@ -1,6 +1,13 @@
 export const talkingHeadMediaDirectories = ['视频', '文档', '图片', '音频'] as const
 export type TalkingHeadMediaDirectory = (typeof talkingHeadMediaDirectories)[number]
 
+export function normalizeTalkingHeadProjectName(value: string) {
+  const name = String(value).trim()
+  if (!name || name === '.' || name === '..' || [...name].length > 80 || /[\\/:*?"<>|\u0000-\u001f]/.test(name))
+    throw new Error('项目名称无效')
+  return name
+}
+
 export function talkingHeadMediaRelativePath(directory: TalkingHeadMediaDirectory, fileName = '') {
   const normalized = String(fileName).replace(/\\/g, '/').replace(/^\/+/, '')
   if (normalized.split('/').some((part: string) => part === '..')) throw new Error('媒体文件路径无效')
@@ -108,6 +115,7 @@ export type TalkingHeadHighlightPosition = (typeof talkingHeadHighlightPositions
 export interface TalkingHeadHighlight {
   cueId: string
   phrase: string
+  custom?: boolean
   style: TalkingHeadHighlightStyle
   position?: TalkingHeadHighlightPosition
 }
@@ -248,7 +256,7 @@ export function formatTalkingHeadAss(cues: Array<{ cueId?: string; startMs: numb
   const highlightEvents = highlights.flatMap((highlight) => {
     const cue = cues.find((candidate) => candidate.cueId === highlight.cueId)
     const template = talkingHeadHighlightTemplates.find((candidate) => candidate.id === highlight.style)
-    if (!cue || !template || !cue.text.includes(highlight.phrase)) return []
+    if (!cue || !template || (!highlight.custom && !cue.text.includes(highlight.phrase))) return []
     const layout = talkingHeadHighlightLayout(highlight, style, { width, height })
     const size = layout.fontSize
     const tag = template.id === '爆点黄'

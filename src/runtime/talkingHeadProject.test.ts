@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { editTalkingHeadCues, formatTalkingHeadAss, isTalkingHeadEditPlanValid, normalizeTalkingHeadCues, normalizeTalkingHeadSubtitleStyle, splitTalkingHeadCues, talkingHeadHighlightLayout, talkingHeadMediaDirectories, talkingHeadMediaRelativePath, talkingHeadMediaUrl, validateTalkingHeadCues } from './talkingHeadProject.ts'
+import { editTalkingHeadCues, formatTalkingHeadAss, isTalkingHeadEditPlanValid, normalizeTalkingHeadCues, normalizeTalkingHeadProjectName, normalizeTalkingHeadSubtitleStyle, splitTalkingHeadCues, talkingHeadHighlightLayout, talkingHeadMediaDirectories, talkingHeadMediaRelativePath, talkingHeadMediaUrl, validateTalkingHeadCues } from './talkingHeadProject.ts'
+
+test('项目重命名只接受单个安全目录名', () => {
+  assert.equal(normalizeTalkingHeadProjectName('  新项目  '), '新项目')
+  for (const name of ['', '.', '..', 'a/b', 'a\\b', 'a:b']) assert.throws(() => normalizeTalkingHeadProjectName(name))
+})
 
 test('口播字幕单条最多 15 字并统一修复 ID', () => {
   const text = '你们是不是这样的人对着镜头夸夸二十多分钟全是干货'
@@ -71,4 +76,15 @@ test('长重点词会在导出与预览共用的安全宽度内换行', () => {
   const layout = talkingHeadHighlightLayout({ cueId: 'cue-001', phrase: '是不是这样的人', style: '爆点黄', position: '左上' })
   assert.match(layout.text, /\\N/)
   assert.match(formatTalkingHeadAss([{ cueId: 'cue-001', startMs: 0, endMs: 1000, text: '你们是不是这样的人' }], undefined, undefined, [{ cueId: 'cue-001', phrase: '是不是这样的人', style: '爆点黄', position: '左上' }]), /是不是这\\N样的人/)
+})
+
+test('自定义花字绑定字幕时间但不要求来自字幕原文', () => {
+  const ass = formatTalkingHeadAss(
+    [{ cueId: 'cue-001', startMs: 1000, endMs: 2200, text: '这是字幕原文' }],
+    undefined,
+    undefined,
+    [{ cueId: 'cue-001', phrase: '别再瞎剪', custom: true, style: '爆点黄', position: '左上' }],
+  )
+  assert.match(ass, /Dialogue: 1,0:00:01\.00,0:00:02\.20.*别再\\N瞎剪/)
+  assert.doesNotMatch(formatTalkingHeadAss([{ cueId: 'cue-001', startMs: 1000, endMs: 2200, text: '这是字幕原文' }], undefined, undefined, [{ cueId: 'cue-001', phrase: '别再瞎剪', style: '爆点黄' }]), /Dialogue: 1/)
 })

@@ -5,8 +5,9 @@ import { isDev } from './lib/is-dev'
 import { OpenExternalParams, StatEventParams } from './types'
 import { sendStatEvent } from './lib/stat'
 import { hasApiKey, saveApiKey, testApiKey } from './talking-head-cloud'
-import { getFunAsrInstallStatus, getFunAsrSubtitleInstallStatus, installFunAsr } from './funasr-installer'
-import { calibrateTalkingHeadCues, chooseTalkingHeadBackgroundMusic, chooseTalkingHeadProject, chooseTalkingHeadSource, composeTalkingHeadEditPlan, generateTalkingHeadEditPlanForProject, generateTalkingHeadHighlightsForProject, listTalkingHeadFonts, loadTalkingHeadProjectState, prepareTalkingHeadSoundEffects, previewTalkingHeadFrame, restoreTalkingHeadRecognizedCues, saveTalkingHeadBackgroundMusic, saveTalkingHeadCues, saveTalkingHeadEditPlan, saveTalkingHeadHighlightPlan, setTalkingHeadSoundEffectsEnabled, showTalkingHeadOutput, showTalkingHeadProject, transcribeTalkingHeadSource } from './talking-head-project'
+import { getFunAsrInstallStatus, getFunAsrSubtitleInstallStatus, installFunAsr, scanFunAsr } from './funasr-installer'
+import { getFFmpegStatus } from './ffmpeg/index'
+import { calibrateTalkingHeadCues, chooseTalkingHeadBackgroundMusic, chooseTalkingHeadProject, chooseTalkingHeadSource, composeTalkingHeadEditPlan, generateTalkingHeadEditPlanForProject, generateTalkingHeadHighlightsForProject, listTalkingHeadFonts, loadTalkingHeadProjectState, prepareTalkingHeadSoundEffects, previewTalkingHeadFrame, renameTalkingHeadProject, restoreTalkingHeadRecognizedCues, saveTalkingHeadBackgroundMusic, saveTalkingHeadCues, saveTalkingHeadEditPlan, saveTalkingHeadHighlightPlan, saveTalkingHeadSubtitleStyle, setTalkingHeadSoundEffectsEnabled, showTalkingHeadOutput, showTalkingHeadProject, transcribeTalkingHeadSource } from './talking-head-project'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 let windowMaximizedByApp = false
@@ -105,6 +106,7 @@ export default function initIPC() {
 
   ipcMain.handle('cloud-has-api-key', () => hasApiKey())
   ipcMain.handle('talking-head-project-choose', () => chooseTalkingHeadProject())
+  ipcMain.handle('talking-head-project-rename', (_event, rootPath: string, name: string) => renameTalkingHeadProject(rootPath, name))
   ipcMain.handle('talking-head-project-show', (_event, rootPath: string) =>
     showTalkingHeadProject(rootPath),
   )
@@ -118,6 +120,7 @@ export default function initIPC() {
   ipcMain.handle('talking-head-fonts-list', () => listTalkingHeadFonts())
   ipcMain.handle('talking-head-background-music-choose', (_event, rootPath: string) => chooseTalkingHeadBackgroundMusic(rootPath))
   ipcMain.handle('talking-head-background-music-save', (_event, rootPath: string, music) => saveTalkingHeadBackgroundMusic(rootPath, music))
+  ipcMain.handle('talking-head-subtitle-style-save', (_event, rootPath: string, style) => saveTalkingHeadSubtitleStyle(rootPath, style))
   ipcMain.handle('talking-head-sound-effects-enabled', (_event, rootPath: string, enabled: boolean) => setTalkingHeadSoundEffectsEnabled(rootPath, enabled))
   ipcMain.handle('talking-head-sound-effects-prepare', (_event, rootPath: string) => prepareTalkingHeadSoundEffects(rootPath))
   ipcMain.handle('talking-head-cues-save', (_event, rootPath: string, cues) => saveTalkingHeadCues(rootPath, cues))
@@ -131,9 +134,11 @@ export default function initIPC() {
   ipcMain.handle('talking-head-cues-calibrate', (_event, rootPath: string, textModel, instruction) => calibrateTalkingHeadCues(rootPath, textModel, instruction))
   ipcMain.handle('talking-head-cues-restore-recognized', (_event, rootPath: string) => restoreTalkingHeadRecognizedCues(rootPath))
   ipcMain.handle('cloud-save-api-key', (_event, apiKey: string) => saveApiKey(apiKey))
-  ipcMain.handle('cloud-test-api-key', () => testApiKey())
+  ipcMain.handle('cloud-test-api-key', (_event, textModel) => testApiKey(textModel))
   ipcMain.handle('funasr-install-status', () => getFunAsrInstallStatus())
   ipcMain.handle('funasr-subtitle-install-status', () => getFunAsrSubtitleInstallStatus())
+  ipcMain.handle('funasr-scan', (event) => scanFunAsr((message) => event.sender.send('funasr-install-progress', message)))
+  ipcMain.handle('ffmpeg-status', () => getFFmpegStatus())
   ipcMain.handle('funasr-install', (event) =>
     installFunAsr((message) => event.sender.send('funasr-install-progress', message)),
   )

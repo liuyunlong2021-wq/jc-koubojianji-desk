@@ -2,8 +2,8 @@
   <main class="desk-shell">
     <header class="project-bar">
       <v-btn color="primary" variant="flat" size="small" prepend-icon="mdi-folder-plus-outline" @click="chooseProject">选择项目</v-btn>
-      <v-select v-model="projectName" class="project-select" :items="projectNames" density="compact" variant="outlined" hide-details aria-label="选择项目" />
-      <v-btn icon="mdi-pencil-outline" variant="text" size="small" title="重命名项目" />
+      <v-select v-model="projectRoot" class="project-select" :items="projectHistory" item-title="name" item-value="rootPath" density="compact" variant="outlined" hide-details placeholder="未选择项目" aria-label="选择项目" @update:model-value="switchProject" />
+      <v-btn icon="mdi-pencil-outline" variant="text" size="small" title="重命名项目" :disabled="!projectRoot" @click="openRenameProject" />
       <v-btn icon="mdi-folder-open-outline" variant="text" size="small" title="在访达中显示" :disabled="!projectRoot" @click="showProject" />
       <v-divider vertical class="mx-2" />
       <nav class="workspace-nav" aria-label="工作台">
@@ -122,7 +122,7 @@
           @drop="dropCue(cue.cueId)"
         >
           <v-icon class="drag-handle" size="18">mdi-drag-vertical</v-icon>
-          <div class="plan-cue-body"><small>#{{ cue.cueId.replace('cue-', '') }} · 原片 {{ formatTime(cue.startMs) }}</small><p>{{ cue.confirmedText }}</p><div class="highlight-row"><template v-if="highlightSuggestionForCue(cue.cueId)"><span>智能建议</span><button class="highlight-label" :style="highlightChipStyle(highlightSuggestionForCue(cue.cueId)!)" @click.stop="previewHighlightItem(highlightSuggestionForCue(cue.cueId)!)">{{ highlightSuggestionForCue(cue.cueId)!.phrase }}</button><em>{{ highlightSuggestionForCue(cue.cueId)!.position || '左上' }}</em><v-btn size="x-small" variant="text" color="primary" @click.stop="applyHighlight(highlightSuggestionForCue(cue.cueId)!)">替换</v-btn></template><template v-else-if="highlightForCue(cue.cueId)"><button class="highlight-label" :style="highlightChipStyle(highlightForCue(cue.cueId)!)" @click.stop="previewHighlightItem(highlightForCue(cue.cueId)!)">{{ highlightForCue(cue.cueId)!.phrase }}</button><select :value="highlightForCue(cue.cueId)!.style" aria-label="重点大字样式" @click.stop @change="changeHighlightStyle(cue.cueId, ($event.target as HTMLSelectElement).value)"><option v-for="template in highlightTemplates" :key="template.id" :value="template.id">{{ template.label }}</option></select><div class="position-choices"><button v-for="position in highlightPositions" :key="position" :class="{ active: (highlightForCue(cue.cueId)!.position || '左上') === position }" :title="position" @click.stop="changeHighlightPosition(cue.cueId, position)">{{ position }}</button></div><v-btn icon="mdi-close" size="x-small" variant="text" title="移除重点大字" @click.stop="removeHighlight(cue.cueId)" /></template><v-btn v-else size="x-small" variant="text" color="primary" prepend-icon="mdi-plus" @click.stop="addHighlight(cue)">添加花字</v-btn></div></div>
+          <div class="plan-cue-body"><small>#{{ cue.cueId.replace('cue-', '') }} · 原片 {{ formatTime(cue.startMs) }}</small><p>{{ cue.confirmedText }}</p><div class="highlight-row"><template v-if="highlightSuggestionForCue(cue.cueId)"><span>智能建议</span><button class="highlight-label" :style="highlightChipStyle(highlightSuggestionForCue(cue.cueId)!)" @click.stop="previewHighlightItem(highlightSuggestionForCue(cue.cueId)!)">{{ highlightSuggestionForCue(cue.cueId)!.phrase }}</button><em>{{ highlightSuggestionForCue(cue.cueId)!.position || '左上' }}</em><v-btn size="x-small" variant="text" color="primary" @click.stop="applyHighlight(highlightSuggestionForCue(cue.cueId)!)">替换</v-btn><v-btn icon="mdi-pencil-outline" size="x-small" variant="text" title="编辑花字" @click.stop="openAddHighlight(cue, highlightSuggestionForCue(cue.cueId)!)" /></template><template v-else-if="highlightForCue(cue.cueId)"><button class="highlight-label" :style="highlightChipStyle(highlightForCue(cue.cueId)!)" @click.stop="previewHighlightItem(highlightForCue(cue.cueId)!)">{{ highlightForCue(cue.cueId)!.phrase }}</button><select :value="highlightForCue(cue.cueId)!.style" aria-label="重点大字样式" @click.stop @change="changeHighlightStyle(cue.cueId, ($event.target as HTMLSelectElement).value)"><option v-for="template in highlightTemplates" :key="template.id" :value="template.id">{{ template.label }}</option></select><div class="position-choices"><button v-for="position in highlightPositions" :key="position" :class="{ active: (highlightForCue(cue.cueId)!.position || '左上') === position }" :title="position" @click.stop="changeHighlightPosition(cue.cueId, position)">{{ position }}</button></div><v-btn icon="mdi-pencil-outline" size="x-small" variant="text" title="编辑花字" @click.stop="openAddHighlight(cue, highlightForCue(cue.cueId)!)" /><v-btn icon="mdi-close" size="x-small" variant="text" title="移除重点大字" @click.stop="removeHighlight(cue.cueId)" /></template><v-btn v-else size="x-small" variant="text" color="primary" prepend-icon="mdi-plus" @click.stop="openAddHighlight(cue)">添加花字</v-btn></div></div>
           <div class="cue-actions">
             <v-btn icon="mdi-arrow-up" variant="text" size="x-small" :disabled="index === 0" title="上移" @click="move(cue.cueId, -1)" />
             <v-btn icon="mdi-arrow-down" variant="text" size="x-small" :disabled="index === activeCues.length - 1" title="下移" @click="move(cue.cueId, 1)" />
@@ -156,13 +156,13 @@
             <v-btn value="9:16">竖屏 9:16</v-btn>
           </v-btn-toggle>
           <v-btn block :color="burnSubtitles ? 'primary' : undefined" :variant="burnSubtitles ? 'flat' : 'outlined'" prepend-icon="mdi-subtitles-outline" class="mt-2" @click="burnSubtitles = !burnSubtitles; finalRendered = false; finalFileName = ''">烧录字幕{{ burnSubtitles ? ' · 已启用' : ' · 未启用' }}</v-btn>
-          <v-select v-model="subtitleStyle.fontFamily" :items="subtitleFonts" label="字幕字体" density="compact" variant="outlined" hide-details class="mt-2" @update:model-value="markFinalStale"><template #item="{ props, item }"><v-list-item v-bind="props" @contextmenu.prevent="toggleFontFavorite(String(item.value))"><template #append><v-icon v-if="fontFavorites.includes(String(item.value))" size="15" color="primary">mdi-pin</v-icon></template></v-list-item></template></v-select>
-          <div class="font-scale"><span>字幕大小</span><v-slider :model-value="subtitleStyle.fontScale" :min="0.7" :max="1.5" :step="0.1" :ticks="{ 1: '' }" show-ticks="always" hide-details @update:model-value="updateSubtitleScale" /></div>
-          <div class="position-slider"><span>靠上</span><v-slider :model-value="subtitleStyle.verticalPosition" :min="8" :max="92" :step="1" :ticks="{ 76: '' }" show-ticks="always" hide-details @update:model-value="updateSubtitlePosition" /><span>靠下</span></div>
-          <div class="style-actions"><v-btn :color="subtitleStyle.bold ? 'primary' : undefined" :variant="subtitleStyle.bold ? 'flat' : 'outlined'" size="small" @click="subtitleStyle.bold = !subtitleStyle.bold; markFinalStale()"><strong>B</strong> 加粗</v-btn><v-btn :color="subtitleStyle.outline ? 'primary' : undefined" :variant="subtitleStyle.outline ? 'flat' : 'outlined'" size="small" prepend-icon="mdi-format-color-text" @click="subtitleStyle.outline = !subtitleStyle.outline; markFinalStale()">描边</v-btn></div>
-          <div class="color-swatches"><label><span>字色</span><input v-model="subtitleStyle.fontColor" type="color" aria-label="字幕颜色" @input="markFinalStale" /></label><label><span>描边</span><input v-model="subtitleStyle.outlineColor" type="color" aria-label="描边颜色" @input="markFinalStale" /></label></div>
+          <v-select v-model="subtitleStyle.fontFamily" :items="subtitleFonts" label="字幕字体" density="compact" variant="outlined" hide-details class="mt-2" @update:model-value="saveSubtitleStyle"><template #item="{ props, item }"><v-list-item v-bind="props" @contextmenu.prevent="toggleFontFavorite(String(item.value))"><template #append><v-icon v-if="fontFavorites.includes(String(item.value))" size="15" color="primary">mdi-pin</v-icon></template></v-list-item></template></v-select>
+          <div class="font-scale"><span>字幕大小</span><v-slider :model-value="subtitleStyle.fontScale" :min="0.7" :max="1.5" :step="0.1" :ticks="{ 1: '' }" show-ticks="always" hide-details @update:model-value="updateSubtitleScale" @end="saveSubtitleStyle" /></div>
+          <div class="position-slider"><span>靠上</span><v-slider :model-value="subtitleStyle.verticalPosition" :min="8" :max="92" :step="1" :ticks="{ 76: '' }" show-ticks="always" hide-details @update:model-value="updateSubtitlePosition" @end="saveSubtitleStyle" /><span>靠下</span></div>
+          <div class="style-actions"><v-btn :color="subtitleStyle.bold ? 'primary' : undefined" :variant="subtitleStyle.bold ? 'flat' : 'outlined'" size="small" @click="subtitleStyle.bold = !subtitleStyle.bold; saveSubtitleStyle()"><strong>B</strong> 加粗</v-btn><v-btn :color="subtitleStyle.outline ? 'primary' : undefined" :variant="subtitleStyle.outline ? 'flat' : 'outlined'" size="small" prepend-icon="mdi-format-color-text" @click="subtitleStyle.outline = !subtitleStyle.outline; saveSubtitleStyle()">描边</v-btn></div>
+          <div class="color-swatches"><label><span>字色</span><input v-model="subtitleStyle.fontColor" type="color" aria-label="字幕颜色" @input="markFinalStale" @change="saveSubtitleStyle" /></label><label><span>描边</span><input v-model="subtitleStyle.outlineColor" type="color" aria-label="描边颜色" @input="markFinalStale" @change="saveSubtitleStyle" /></label></div>
           <section class="music-settings"><h2>背景音乐</h2><template v-if="backgroundMusic"><div class="music-file"><span>{{ backgroundMusic.fileName }}</span><v-btn icon="mdi-close" size="x-small" variant="text" title="移除背景音乐" @click="removeBackgroundMusic" /></div><audio controls :src="backgroundMusicUrl" :volume="backgroundMusicVolume / 100" /><div class="music-volume"><span>音乐音量</span><v-slider v-model="backgroundMusicVolume" :min="0" :max="30" :step="1" thumb-label hide-details @update:model-value="markFinalStale" @end="saveBackgroundMusic" /></div><v-btn block size="small" variant="text" prepend-icon="mdi-swap-horizontal" @click="chooseBackgroundMusic">更换音乐</v-btn></template><v-btn v-else block variant="outlined" color="primary" prepend-icon="mdi-music-note-plus" @click="chooseBackgroundMusic">导入背景音乐</v-btn></section>
-          <section class="highlight-settings"><h2>重点大字 <small>{{ subtitleStyle.highlightScale.toFixed(2) }}</small></h2><div class="font-scale"><span>大字大小</span><v-slider v-model="subtitleStyle.highlightScale" :min="0.7" :max="1.3" :step="0.05" :ticks="{ 1: '' }" show-ticks="always" hide-details @update:model-value="markFinalStale" /></div><v-btn block color="primary" variant="flat" prepend-icon="mdi-auto-fix" :loading="generatingHighlights" :disabled="generatingHighlights || !activeCues.length" @click="generateHighlights">{{ highlightItems.length ? '重新挑选重点词' : 'AI 挑重点词' }}</v-btn><v-btn v-if="highlightSuggestions.length" block variant="text" color="primary" prepend-icon="mdi-check-all" class="mt-1" @click="applyAllHighlights">应用全部建议</v-btn><p v-if="highlightMessage" class="calibration-status">{{ highlightMessage }}</p><div class="highlight-template-list"><span v-for="template in highlightTemplates" :key="template.id" :style="{ color: template.color, background: template.background }">{{ template.label }}</span></div></section>
+          <section class="highlight-settings"><h2>重点大字 <small>{{ subtitleStyle.highlightScale.toFixed(2) }}</small></h2><div class="font-scale"><span>大字大小</span><v-slider v-model="subtitleStyle.highlightScale" :min="0.7" :max="1.3" :step="0.05" :ticks="{ 1: '' }" show-ticks="always" hide-details @update:model-value="markFinalStale" @end="saveSubtitleStyle" /></div><v-btn block color="primary" variant="flat" prepend-icon="mdi-auto-fix" :loading="generatingHighlights" :disabled="generatingHighlights || !activeCues.length" @click="generateHighlights">{{ highlightItems.length ? '重新挑选重点词' : 'AI 挑重点词' }}</v-btn><v-btn v-if="highlightSuggestions.length" block variant="text" color="primary" prepend-icon="mdi-check-all" class="mt-1" @click="applyAllHighlights">应用全部建议</v-btn><p v-if="highlightMessage" class="calibration-status">{{ highlightMessage }}</p><div class="highlight-template-list"><span v-for="template in highlightTemplates" :key="template.id" :style="{ color: template.color, background: template.background }">{{ template.label }}</span></div></section>
           <section class="sound-settings"><h2>重点词音效</h2><v-btn block :color="soundEffectsEnabled ? 'primary' : undefined" :variant="soundEffectsEnabled ? 'flat' : 'outlined'" prepend-icon="mdi-volume-high" @click="toggleSoundEffects">重点词音效{{ soundEffectsEnabled ? ' · 已启用' : ' · 已关闭' }}</v-btn><div class="sound-previews"><v-btn v-for="effect in soundEffects" :key="effect.style" size="x-small" variant="text" @click="previewSoundEffect(effect.fileName)">{{ effect.label }}</v-btn></div></section>
           <div class="export-status">预计时长 <strong>{{ estimatedDuration }}</strong></div>
           <v-btn block color="primary" variant="flat" prepend-icon="mdi-movie-open" :loading="composing" :disabled="composing || !activeCues.length" @click="generateFinal">{{ finalRendered ? '重新生成成片' : '生成成片' }}</v-btn>
@@ -183,9 +183,10 @@
           <v-divider />
           <div class="settings-engine">
             <div><strong>本地字幕引擎</strong><p>{{ funAsrStatus?.message || '正在检查安装状态…' }}</p><p v-if="funAsrProgress">{{ funAsrProgress }}</p></div>
-            <v-btn icon="mdi-refresh" size="small" variant="text" title="扫描本机已有模型" :loading="checkingFunAsr" @click="checkFunAsr" />
+            <v-btn icon="mdi-refresh" size="small" variant="text" title="扫描、验证并绑定本机已有引擎" :loading="checkingFunAsr" @click="checkFunAsr" />
             <v-btn :color="funAsrStatus?.state === 'ready' ? undefined : 'primary'" :variant="funAsrStatus?.state === 'ready' ? 'tonal' : 'flat'" :loading="installingFunAsr" :disabled="installingFunAsr || funAsrStatus?.state === 'ready'" @click="installFunAsr">{{ funAsrStatus?.state === 'ready' ? '已就绪' : '一键安装' }}</v-btn>
           </div>
+          <div class="settings-engine"><div><strong>媒体导出引擎</strong><p>{{ ffmpegStatus?.message || '正在检查内置 FFmpeg…' }}</p></div></div>
         </v-card-text>
         <v-card-actions><v-spacer /><v-btn variant="text" @click="settingsOpen = false">关闭</v-btn><v-btn :loading="testingApiKey" variant="tonal" @click="testApiKey">测试连接</v-btn><v-btn color="primary" @click="saveSettings">保存</v-btn></v-card-actions>
       </v-card>
@@ -196,6 +197,18 @@
         <v-card-actions><v-spacer /><v-btn variant="text" @click="replaceSourceOpen = false">取消</v-btn><v-btn color="error" @click="replaceSource">确认更换</v-btn></v-card-actions>
       </v-card>
     </v-dialog>
+    <v-dialog v-model="renameProjectOpen" max-width="420">
+      <v-card title="重命名项目">
+        <v-card-text><v-text-field v-model="renameProjectName" label="项目名称" autofocus maxlength="80" @keyup.enter="renameProject" /><p v-if="renameProjectMessage" class="calibration-status">{{ renameProjectMessage }}</p></v-card-text>
+        <v-card-actions><v-spacer /><v-btn variant="text" @click="renameProjectOpen = false">取消</v-btn><v-btn color="primary" @click="renameProject">确认重命名</v-btn></v-card-actions>
+      </v-card>
+    </v-dialog>
+    <v-dialog v-model="addHighlightOpen" max-width="520">
+      <v-card title="添加花字">
+        <v-card-text><v-btn-toggle v-model="addingHighlightMode" mandatory color="primary" density="compact" class="mb-4"><v-btn value="source">原字幕摘取</v-btn><v-btn value="custom">自定义花字</v-btn></v-btn-toggle><v-text-field v-model="addingHighlightPhrase" :label="addingHighlightMode === 'source' ? '强调原句' : '自定义花字'" maxlength="24" counter="24" autofocus @keyup.enter="confirmAddHighlight" /></v-card-text>
+        <v-card-actions><v-spacer /><v-btn variant="text" @click="addHighlightOpen = false">取消</v-btn><v-btn color="primary" @click="confirmAddHighlight">添加</v-btn></v-card-actions>
+      </v-card>
+    </v-dialog>
   </main>
 </template>
 
@@ -204,13 +217,27 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { defaultTalkingHeadSubtitleStyle, editTalkingHeadCues, isTalkingHeadEditPlanValid, talkingHeadHighlightPositions, talkingHeadHighlightTemplates, talkingHeadMediaUrl, talkingHeadSoundEffects, type TalkingHeadBackgroundMusic, type TalkingHeadCue, type TalkingHeadHighlight, type TalkingHeadHighlightPosition, type TalkingHeadHighlightStyle } from '@/runtime/talkingHeadProject'
 
 const workspace = ref<'captions' | 'structure'>('captions')
-const projectName = ref('未选择项目')
-const projectNames = ref(['未选择项目'])
+type ProjectHistoryItem = { name: string; rootPath: string }
+type PromptPreset = { name: string; prompt: string }
+const PROJECT_HISTORY_KEY = 'jc-koubojianji-project-history'
+const SEMANTIC_PRESETS_KEY = 'jc-koubojianji-semantic-presets'
+const EDITORIAL_PRESETS_KEY = 'jc-koubojianji-editorial-presets'
+function storedArray<T>(key: string, valid: (item: unknown) => item is T) {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(key) || '[]')
+    return Array.isArray(value) ? value.filter(valid) : []
+  } catch { return [] }
+}
+const projectHistory = ref(storedArray<ProjectHistoryItem>(PROJECT_HISTORY_KEY, (item): item is ProjectHistoryItem => Boolean(item && typeof item === 'object' && typeof (item as ProjectHistoryItem).name === 'string' && typeof (item as ProjectHistoryItem).rootPath === 'string')))
 const projectRoot = ref('')
+const renameProjectOpen = ref(false)
+const renameProjectName = ref('')
+const renameProjectMessage = ref('')
 const settingsOpen = ref(false)
 const replaceSourceOpen = ref(false)
 const apiKey = ref('')
 const apiKeySaved = ref(false)
+const apiKeyMessage = ref('')
 const showApiKey = ref(false)
 const testingApiKey = ref(false)
 const textModel = ref('gemini-3.6-flash')
@@ -223,6 +250,7 @@ const checkingFunAsr = ref(false)
 const funAsrProgress = ref('')
 const funAsrStatus = ref<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string } | null>(null)
 const subtitleEngineStatus = ref<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string } | null>(null)
+const ffmpegStatus = ref<{ state: 'ready' | 'failed'; message: string } | null>(null)
 const recognizing = ref(false)
 const transcriptionMessage = ref('')
 const captionMessage = ref('')
@@ -231,20 +259,21 @@ const draggingCueId = ref('')
 const jiucaiheziEditorialPrompt = '你是口播净稿助手。只按原始顺序删除现有字幕片段，绝不重排、改写、合并、拆分、补写或虚构原话。先把连续的细碎字幕合在脑中理解成完整句子和完整观点，再决定保留或删除，绝不能机械地按单条字幕判断。视频常是照着已经整理好的文案读的：只删除读稿时出现的无意义语气词、卡顿、口误、紧邻重复、说颠倒后立刻自我纠正、同一意思反复说和无法推进理解的片段；保留原文案的观点、事实、步骤、依据、转折、情绪强调和完整句意。删除后相邻保留字幕必须能自然连成话，不能留下半句话、指代不明或逻辑断裂。不要为了钩子、完播、节奏、开头或结尾而删除、移动或调整任何内容。没有可靠依据时不制造数据、案例、夸张承诺或绝对化结论。'
 const editorialNote = ref(jiucaiheziEditorialPrompt)
 const editorialPresetName = ref('')
-const editorialPresets = ref([
-  { name: '韭菜盒子', prompt: jiucaiheziEditorialPrompt },
-])
+const storedEditorialPresets = storedArray<PromptPreset>(EDITORIAL_PRESETS_KEY, (item): item is PromptPreset => Boolean(item && typeof item === 'object' && typeof (item as PromptPreset).name === 'string' && typeof (item as PromptPreset).prompt === 'string'))
+const editorialPresets = ref(storedEditorialPresets.length ? storedEditorialPresets : [{ name: '韭菜盒子', prompt: jiucaiheziEditorialPrompt }])
 const planState = ref<'draft' | 'previewed'>('draft')
 const generatingPlan = ref(false)
 const planMessage = ref('')
 const semanticPrompt = ref('你是口播字幕校准助手。结合完整上下文修正语音识别错误，不改变原意、语气、句子顺序和信息量。必须主动纠正东北话、方言、连读、平翘舌和轻重音造成的谐音、近音错字；当发音像中文、但上下文属于 AI、编程、模型、产品或英文术语时，必须优先还原为英文正式名称，不能按中文近音字保留。例如“克劳德、克劳的、cla ss、cud”应结合上下文识别为 Claude；“杰米尼、吉米尼、哥们女、man”应结合上下文识别为 Gemini。高优先级术语：Claude、Claude Opus、Gemini、OpenAI、ChatGPT、Codex、Cursor、GitHub、Prompt、API、JSON、Markdown、Vue、Electron、FFmpeg、FunASR、Seedance；即使被识别成中文、拼音碎片、英文碎片或谐音，也必须结合上下文优先还原为正式写法。不要为了补全短句而猜测数量或遗漏内容。可修正明显漏字和断句；保留口头禅、重复句、情绪表达及所有原始信息。不删除、不总结、不扩写、不改写为书面语、不调整字幕顺序。每一条字幕必须一一对应原字幕 ID，数量和顺序不得变化。只输出校准后的字幕文本。')
 const semanticPresetName = ref('')
-const semanticPresets = ref([
+const defaultSemanticPresets = [
   {
     name: '韭菜盒子口播',
     prompt: '你是口播字幕校准助手。结合完整上下文，把口播整理成通顺、自然、适合直接上屏的字幕，不改变原意、观点、事实和信息量。必须主动纠正东北话、方言、连读、平翘舌和轻重音造成的谐音、近音错字；不能因为字面看似中文就保留错误识别。当发音像中文、但上下文属于 AI、编程、模型、产品或英文术语时，必须优先还原为英文正式名称，不能按中文近音字保留。例如“克劳德、克劳的、cla ss、cud”应结合上下文识别为 Claude；“杰米尼、吉米尼、哥们女、man”应结合上下文识别为 Gemini。高优先级术语：Claude、Claude Opus、Gemini、OpenAI、ChatGPT、Codex、Cursor、GitHub、Prompt、API、JSON、Markdown、Vue、Electron、FFmpeg、FunASR、Seedance；即使被识别成中文、拼音碎片、英文碎片或谐音，也必须结合上下文优先还原为正式写法。遇到已整理好的读稿内容，优先还原其完整、准确的原句。不要为了补全短句而猜测数量或遗漏内容。允许删除无意义语气词、卡顿、口误、紧邻重复和明显说颠倒后立刻自我纠正的内容；保留有实际语义、情绪或强调作用的口头表达。可补正明显漏字和断句，但不总结、不扩写、不凭空补内容、不调整字幕顺序。每一条字幕必须一一对应原字幕 ID，数量和顺序不得变化；不得合并或拆分字幕。只输出校准后的字幕文本。',
   },
-])
+]
+const storedSemanticPresets = storedArray<PromptPreset>(SEMANTIC_PRESETS_KEY, (item): item is PromptPreset => Boolean(item && typeof item === 'object' && typeof (item as PromptPreset).name === 'string' && typeof (item as PromptPreset).prompt === 'string'))
+const semanticPresets = ref(storedSemanticPresets.length ? storedSemanticPresets : defaultSemanticPresets)
 const semanticSuggestionsVisible = ref(false)
 const semanticSuggestions = ref<Array<{ cueId: string; text: string }>>([])
 const semanticApplied = ref(false)
@@ -279,6 +308,11 @@ const highlightItems = ref<TalkingHeadHighlight[]>([])
 const highlightSuggestions = ref<TalkingHeadHighlight[]>([])
 const generatingHighlights = ref(false)
 const highlightMessage = ref('')
+const addHighlightOpen = ref(false)
+const addingHighlightCue = ref<TalkingHeadCue | null>(null)
+const addingHighlightPhrase = ref('')
+const addingHighlightMode = ref<'source' | 'custom'>('source')
+const addingHighlightOriginal = ref<TalkingHeadHighlight | null>(null)
 const selectedPreviewHighlight = ref<TalkingHeadHighlight | null>(null)
 const selectedPreviewCueId = ref('')
 const sourceCues = ref<TalkingHeadCue[]>([])
@@ -296,7 +330,7 @@ const estimatedDuration = computed(() => {
   const milliseconds = activeCues.value.reduce((total, cue) => total + cue.endMs - cue.startMs, 0)
   return `00:${String(Math.round(milliseconds / 1000)).padStart(2, '0')}`
 })
-const apiKeyStatus = computed(() => apiKeySaved.value ? 'API Key 已保存。' : '尚未配置 API Key。')
+const apiKeyStatus = computed(() => apiKeyMessage.value || (apiKeySaved.value ? 'API Key 已保存。' : '尚未配置 API Key。'))
 const sourceVideoUrl = computed(() => sourceFileName.value && projectRoot.value ? `${talkingHeadMediaUrl(projectRoot.value, sourceFileName.value)}&v=${encodeURIComponent(sourceFingerprint.value)}` : '')
 const finalVideoUrl = computed(() => finalFileName.value && projectRoot.value ? `${talkingHeadMediaUrl(projectRoot.value, finalFileName.value)}&v=${encodeURIComponent(finalVersion.value)}` : '')
 const backgroundMusicUrl = computed(() => backgroundMusic.value && projectRoot.value ? talkingHeadMediaUrl(projectRoot.value, backgroundMusic.value.fileName, '音频') : '')
@@ -313,6 +347,7 @@ onMounted(async () => {
   apiKeySaved.value = await window.electron.cloud.hasApiKey()
   funAsrStatus.value = await window.electron.cloud.funAsrInstallStatus()
   subtitleEngineStatus.value = await window.electron.cloud.funAsrSubtitleInstallStatus()
+  ffmpegStatus.value = await window.electron.cloud.ffmpegStatus()
 })
 const stopFunAsrProgress = window.electron.cloud.onFunAsrInstallProgress((message) => {
   funAsrProgress.value = message
@@ -354,12 +389,25 @@ function stopCuePreview(event?: Event) {
   video.pause()
   cuePreviewEndMs.value = null
 }
+function rememberProject(project: ProjectHistoryItem) {
+  projectHistory.value = [project, ...projectHistory.value.filter((item) => item.rootPath !== project.rootPath)].slice(0, 20)
+  localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(projectHistory.value))
+}
+async function switchProject(value: unknown) {
+  if (typeof value !== 'string' || !value) return
+  projectRoot.value = value
+  captionMessage.value = ''
+  try {
+    await loadProjectState()
+  } catch (error) {
+    captionMessage.value = `项目打开失败：${error instanceof Error ? error.message : String(error)}`
+  }
+}
 async function chooseProject() {
   const project = await window.electron?.talkingHeadProject?.choose()
   if (!project) return
-  projectName.value = project.name
   projectRoot.value = project.rootPath
-  if (!projectNames.value.includes(project.name)) projectNames.value.push(project.name)
+  rememberProject(project)
   await loadProjectState()
 }
 async function loadProjectState() {
@@ -372,6 +420,8 @@ async function loadProjectState() {
   backgroundMusic.value = state.backgroundMusic
   soundEffectsEnabled.value = state.soundEffectsEnabled !== false
   backgroundMusicVolume.value = Math.round((state.backgroundMusic?.volume ?? .10) * 100)
+  finalRendered.value = false
+  finalFileName.value = ''
   highlightItems.value = state.highlightPlan?.sourceFingerprint === state.source?.fingerprint
     ? (state.highlightPlan?.items || []).map((item) => ({ ...item, style: item.style === '爆点黄' ? '爆点黄' : '结论绿' as TalkingHeadHighlightStyle }))
     : []
@@ -385,11 +435,31 @@ async function chooseSource() {
   const source = await window.electron.talkingHeadProject.chooseSource(projectRoot.value || undefined)
   if (source) {
     projectRoot.value = source.rootPath
-    projectName.value = source.name
-    if (!projectNames.value.includes(source.name)) projectNames.value.push(source.name)
+    rememberProject({ name: source.name, rootPath: source.rootPath })
     sourceCues.value = []
     sourceFileName.value = source.fileName
     sourceFingerprint.value = source.fingerprint
+  }
+}
+function openRenameProject() {
+  const project = projectHistory.value.find((item) => item.rootPath === projectRoot.value)
+  renameProjectName.value = project?.name || projectRoot.value.split(/[\\/]/).at(-1) || ''
+  renameProjectMessage.value = ''
+  renameProjectOpen.value = true
+}
+async function renameProject() {
+  if (!projectRoot.value || !renameProjectName.value.trim()) return
+  renameProjectMessage.value = ''
+  try {
+    const previousRoot = projectRoot.value
+    const project = await window.electron.talkingHeadProject.rename(previousRoot, renameProjectName.value)
+    projectHistory.value = projectHistory.value.filter((item) => item.rootPath !== previousRoot)
+    projectRoot.value = project.rootPath
+    rememberProject(project)
+    renameProjectOpen.value = false
+    await loadProjectState()
+  } catch (error) {
+    renameProjectMessage.value = error instanceof Error ? error.message : String(error)
   }
 }
 function confirmReplaceSource() {
@@ -454,29 +524,42 @@ async function showProject() {
 async function openSettings() {
   settingsOpen.value = true
   apiKeySaved.value = await window.electron.cloud.hasApiKey()
-  await checkFunAsr()
 }
 async function checkFunAsr() {
   checkingFunAsr.value = true
+  funAsrProgress.value = '正在搜索、验证并绑定本机已有引擎…'
   try {
-    funAsrStatus.value = await window.electron.cloud.funAsrInstallStatus()
+    const [funAsr, ffmpeg] = await Promise.all([
+      window.electron.cloud.scanFunAsr(),
+      window.electron.cloud.ffmpegStatus(),
+    ])
+    funAsrStatus.value = funAsr
     subtitleEngineStatus.value = await window.electron.cloud.funAsrSubtitleInstallStatus()
+    ffmpegStatus.value = ffmpeg
+  } catch (error) {
+    funAsrStatus.value = { state: 'failed', message: `扫描失败：${error instanceof Error ? error.message : String(error)}` }
   } finally {
     checkingFunAsr.value = false
+    funAsrProgress.value = ''
   }
 }
 async function saveSettings() {
   if (apiKey.value.trim()) await window.electron.cloud.saveApiKey(apiKey.value)
   apiKeySaved.value = await window.electron.cloud.hasApiKey()
+  apiKeyMessage.value = ''
   apiKey.value = ''
   settingsOpen.value = false
 }
 async function testApiKey() {
   testingApiKey.value = true
+  apiKeyMessage.value = '正在连接云端…'
   try {
     if (apiKey.value.trim()) await window.electron.cloud.saveApiKey(apiKey.value)
-    await window.electron.cloud.testApiKey()
+    await window.electron.cloud.testApiKey(textModel.value as import('~/electron/types').TextModel)
     apiKeySaved.value = true
+    apiKeyMessage.value = '云端连接成功。'
+  } catch (error) {
+    apiKeyMessage.value = `连接失败：${error instanceof Error ? error.message : String(error)}`
   } finally {
     testingApiKey.value = false
   }
@@ -486,6 +569,7 @@ async function installFunAsr() {
   funAsrProgress.value = '正在开始安装…'
   try {
     funAsrStatus.value = await window.electron.cloud.installFunAsr()
+    subtitleEngineStatus.value = await window.electron.cloud.funAsrSubtitleInstallStatus()
   } finally {
     installingFunAsr.value = false
     funAsrProgress.value = ''
@@ -497,6 +581,16 @@ function openKeysPage() {
 function markFinalStale() {
   finalRendered.value = false
   finalFileName.value = ''
+}
+async function saveSubtitleStyle() {
+  markFinalStale()
+  if (!projectRoot.value) return
+  try {
+    const result = await window.electron.talkingHeadProject.saveSubtitleStyle(projectRoot.value, { ...subtitleStyle.value })
+    subtitleStyle.value = result.subtitleStyle
+  } catch (error) {
+    composeMessage.value = `字幕样式保存失败：${error instanceof Error ? error.message : String(error)}`
+  }
 }
 async function chooseBackgroundMusic() {
   if (!projectRoot.value) return
@@ -581,11 +675,17 @@ async function previewPlanCue(cue?: TalkingHeadCue) {
   video.currentTime = cue.startMs / 1000
   await video.play().catch(() => undefined)
 }
-async function saveHighlights() {
-  if (!projectRoot.value || !sourceFingerprint.value) return
-  const result = await window.electron.talkingHeadProject.saveHighlights(projectRoot.value, { sourceFingerprint: sourceFingerprint.value, items: highlightItems.value.map((item) => ({ ...item })), updatedAt: new Date().toISOString() })
-  highlightItems.value = result.plan.items
-  markFinalStale()
+async function commitHighlights(items: TalkingHeadHighlight[]) {
+  if (!projectRoot.value || !sourceFingerprint.value) return false
+  try {
+    const result = await window.electron.talkingHeadProject.saveHighlights(projectRoot.value, { sourceFingerprint: sourceFingerprint.value, items: items.map((item) => ({ ...item })), updatedAt: new Date().toISOString() })
+    highlightItems.value = result.plan.items
+    markFinalStale()
+    return true
+  } catch (error) {
+    highlightMessage.value = `花字保存失败：${error instanceof Error ? error.message : String(error)}`
+    return false
+  }
 }
 async function generateHighlights() {
   if (!projectRoot.value) return
@@ -603,42 +703,60 @@ async function generateHighlights() {
   }
 }
 async function applyHighlight(item: TalkingHeadHighlight) {
-  highlightItems.value = [...highlightItems.value.filter((candidate) => candidate.cueId !== item.cueId), item]
+  const next = [...highlightItems.value.filter((candidate) => candidate.cueId !== item.cueId), item]
+  if (!(await commitHighlights(next))) return
   highlightSuggestions.value = highlightSuggestions.value.filter((candidate) => candidate.cueId !== item.cueId)
-  selectedPreviewHighlight.value = item
-  await saveHighlights()
+  selectedPreviewHighlight.value = highlightForCue(item.cueId) || null
 }
 async function applyAllHighlights() {
   const replacements = new Map(highlightSuggestions.value.map((item) => [item.cueId, item]))
-  highlightItems.value = [...highlightItems.value.filter((item) => !replacements.has(item.cueId)), ...highlightSuggestions.value]
+  const next = [...highlightItems.value.filter((item) => !replacements.has(item.cueId)), ...highlightSuggestions.value]
+  if (!(await commitHighlights(next))) return
   highlightSuggestions.value = []
   selectedPreviewHighlight.value = highlightItems.value[0] || null
   highlightMessage.value = `已应用 ${highlightItems.value.length} 个花字。`
-  await saveHighlights()
 }
-async function addHighlight(cue: TalkingHeadCue) {
-  const phrase = window.prompt('输入要强调的原句文字：', cue.confirmedText)?.trim()
-  if (!phrase || !cue.confirmedText.includes(phrase)) return
-  const item: TalkingHeadHighlight = { cueId: cue.cueId, phrase, style: '爆点黄', position: '左上' }
-  highlightItems.value = [...highlightItems.value.filter((candidate) => candidate.cueId !== cue.cueId), item]
-  selectedPreviewHighlight.value = item
-  await saveHighlights()
+function openAddHighlight(cue: TalkingHeadCue, item?: TalkingHeadHighlight) {
+  addingHighlightCue.value = cue
+  addingHighlightOriginal.value = item || null
+  addingHighlightPhrase.value = item?.phrase || cue.confirmedText
+  addingHighlightMode.value = item?.custom ? 'custom' : 'source'
+  addHighlightOpen.value = true
+}
+async function confirmAddHighlight() {
+  const cue = addingHighlightCue.value
+  const phrase = addingHighlightPhrase.value.trim()
+  if (!cue || !phrase) {
+    highlightMessage.value = '请输入花字文字。'
+    return
+  }
+  if ([...phrase].length > 24) {
+    highlightMessage.value = '花字最多 24 个字。'
+    return
+  }
+  if (addingHighlightMode.value === 'source' && !cue.confirmedText.includes(phrase)) {
+    highlightMessage.value = '花字必须是当前字幕中的原句文字。'
+    return
+  }
+  const item: TalkingHeadHighlight = { cueId: cue.cueId, phrase, custom: addingHighlightMode.value === 'custom', style: addingHighlightOriginal.value?.style || '爆点黄', position: addingHighlightOriginal.value?.position || '左上' }
+  const next = [...highlightItems.value.filter((candidate) => candidate.cueId !== cue.cueId), item]
+  if (!(await commitHighlights(next))) return
+  highlightSuggestions.value = highlightSuggestions.value.filter((candidate) => candidate.cueId !== cue.cueId)
+  selectedPreviewHighlight.value = highlightForCue(cue.cueId) || null
+  addHighlightOpen.value = false
 }
 async function removeHighlight(cueId: string) {
-  highlightItems.value = highlightItems.value.filter((item) => item.cueId !== cueId)
+  if (!(await commitHighlights(highlightItems.value.filter((item) => item.cueId !== cueId)))) return
   if (selectedPreviewHighlight.value?.cueId === cueId) selectedPreviewHighlight.value = highlightItems.value[0] || null
-  await saveHighlights()
 }
 async function changeHighlightStyle(cueId: string, style: string) {
   if (!highlightTemplates.some((template) => template.id === style)) return
-  highlightItems.value = highlightItems.value.map((item) => item.cueId === cueId ? { ...item, style: style as TalkingHeadHighlightStyle } : item)
+  if (!(await commitHighlights(highlightItems.value.map((item) => item.cueId === cueId ? { ...item, style: style as TalkingHeadHighlightStyle } : item)))) return
   selectedPreviewHighlight.value = highlightForCue(cueId) || null
-  await saveHighlights()
 }
 async function changeHighlightPosition(cueId: string, position: TalkingHeadHighlightPosition) {
-  highlightItems.value = highlightItems.value.map((item) => item.cueId === cueId ? { ...item, position } : item)
+  if (!(await commitHighlights(highlightItems.value.map((item) => item.cueId === cueId ? { ...item, position } : item)))) return
   selectedPreviewHighlight.value = highlightForCue(cueId) || null
-  await saveHighlights()
 }
 function move(cueId: string, direction: -1 | 1) {
   const next = planCues.value.slice()
@@ -683,6 +801,7 @@ function saveEditorialPreset() {
   const next = { name, prompt }
   if (existing >= 0) editorialPresets.value.splice(existing, 1, next)
   else editorialPresets.value.push(next)
+  localStorage.setItem(EDITORIAL_PRESETS_KEY, JSON.stringify(editorialPresets.value))
   editorialPresetName.value = ''
 }
 async function savePlan() {
@@ -727,6 +846,7 @@ function saveSemanticPreset() {
   const next = { name, prompt }
   if (existing >= 0) semanticPresets.value.splice(existing, 1, next)
   else semanticPresets.value.push(next)
+  localStorage.setItem(SEMANTIC_PRESETS_KEY, JSON.stringify(semanticPresets.value))
   semanticPresetName.value = ''
 }
 function semanticSuggestion(cueId: string) {
@@ -771,7 +891,7 @@ async function generateFinal() {
   composeMessage.value = '正在保存整理方案…'
   try {
     await savePlan()
-    await saveHighlights()
+    if (!(await commitHighlights(highlightItems.value))) throw new Error(highlightMessage.value)
     const result = await window.electron.talkingHeadProject.compose(projectRoot.value, { ratio: outputRatio.value, burnSubtitles: burnSubtitles.value, subtitleStyle: { ...subtitleStyle.value } })
     finalFileName.value = result.fileName
     finalVersion.value = String(Date.now())
