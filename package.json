@@ -25,36 +25,19 @@
   },
   "dependencies": {
     "axios": "^1.11.0",
-    "better-sqlite3": "9.6.0",
-    "dompurify": "3.4.12",
     "ffmpeg-static": "^5.2.0",
     "i18next": "^25.4.0",
-    "i18next-fs-backend": "^2.3.2",
-    "marked": "18.0.7",
-    "music-metadata": "^11.7.3",
-    "subtitle": "4.2.2-alpha.0",
-    "ws": "^8.18.3"
+    "i18next-fs-backend": "^2.3.2"
   },
   "devDependencies": {
-    "@ai-sdk/openai": "^3.0.26",
     "@mdi/font": "^7.4.47",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^16.18.126",
-    "@types/wicg-file-system-access": "^2023.10.6",
-    "@types/ws": "^8.18.1",
     "@vitejs/plugin-vue": "^6.0.0",
-    "@vueuse/core": "^13.5.0",
-    "ai": "^6.0.77",
     "cross-env": "^7.0.3",
     "electron": "^22.3.27",
     "electron-builder": "^24.13.3",
-    "i18next-http-backend": "^3.0.2",
     "i18next-vue": "^5.3.0",
-    "mitt": "^3.0.1",
-    "pinia": "^3.0.3",
-    "pinia-plugin-persistedstate": "^4.4.1",
     "prettier": "^3.6.2",
-    "random": "^5.4.1",
     "sass": "^1.89.2",
     "typescript": "5.6.2",
     "unocss": "^66.3.3",
@@ -64,21 +47,17 @@
     "vite-plugin-vue-devtools": "7.7.7",
     "vue": "^3.5.17",
     "vue-router": "^4.5.1",
-    "vue-toastification": "2.0.0-rc.5",
     "vue-tsc": "3.0.1",
     "vuetify": "^3.11.5"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
-      "better-sqlite3",
       "ffmpeg-static"
     ],
     "onlyBuiltDependencies": [
       "@parcel/watcher",
-      "bufferutil",
       "electron",
       "esbuild",
-      "utf-8-validate",
       "vue-demi"
     ]
   },

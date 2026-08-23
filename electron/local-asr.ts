@@ -1,15 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { app } from 'electron'
-import { executeFFmpeg } from './ffmpeg/index.ts'
-import { assertVideoTranslationSource, getRunDir, relativeRunAsset } from './media-workspace.ts'
 import { funAsrModelRoot, funAsrRuntimeRoot } from './funasr-installer.ts'
 
 const runFile = promisify(execFile)
-const FUNASR_ENGINE = 'funasr-1.4.1-sensevoice-small-ct-punc-v3'
 
 export interface FunAsrCue {
   cueId: string
@@ -56,12 +52,6 @@ function runtimeScriptPath() {
 
 function modelRoot() {
   return funAsrModelRoot()
-}
-
-async function fileHash(filePath: string) {
-  const hash = createHash('sha256')
-  for await (const chunk of fs.createReadStream(filePath)) hash.update(chunk)
-  return hash.digest('hex')
 }
 
 function srtTime(milliseconds: number) {
@@ -141,88 +131,4 @@ export async function transcribeAudioWithFunAsr(audioPath: string, durationMs: n
     JSON.parse(resultLine.slice('FUNASR_RESULT_JSON='.length)),
     durationMs,
   )
-}
-
-export async function transcribeVideoTranslationDubbingBlock(
-  audioPath: string,
-  durationMs: number,
-  abortSignal?: AbortSignal,
-) {
-  if (!(await fs.promises.stat(audioPath).catch(() => null))?.size)
-    throw new Error('完整配音块不存在')
-  return transcribeAudioWithFunAsr(audioPath, durationMs, abortSignal)
-}
-
-async function atomicWriteFiles(files: Array<{ path: string; content: string }>) {
-  const temporary = files.map((file) => `${file.path}.${randomUUID()}.tmp`)
-  try {
-    await Promise.all(
-      files.map(async (file, index) => {
-        await fs.promises.mkdir(path.dirname(file.path), { recursive: true })
-        await fs.promises.writeFile(temporary[index], file.content, 'utf8')
-      }),
-    )
-    for (let index = 0; index < files.length; index++)
-      await fs.promises.rename(temporary[index], files[index].path)
-  } catch (error) {
-    await Promise.all(temporary.map((file) => fs.promises.rm(file, { force: true })))
-    throw error
-  }
-}
-
-export async function transcribeVideoTranslationAudio(
-  runId: string,
-  episodeId: string,
-  videoPath: string,
-  durationMs: number,
-  reportProgress: (message: string) => void,
-  abortSignal?: AbortSignal,
-) {
-  const source = assertVideoTranslationSource(runId, episodeId, videoPath)
-  if (!Number.isFinite(durationMs) || durationMs <= 0) throw new Error('识别视频时长无效')
-  const sourceHash = await fileHash(source)
-  const audioPath = path.join(path.dirname(source), 'source.wav')
-  const audioFingerprintPath = `${audioPath}.source.sha256`
-  const translationRoot = path.join(getRunDir(runId), 'wiki', '翻译', episodeId)
-  const jsonPath = path.join(translationRoot, '原始转写.json')
-  const srtPath = path.join(translationRoot, '原始转写.srt')
-  const cached = await fs.promises
-    .readFile(jsonPath, 'utf8')
-    .then((content) => validateTranscript(JSON.parse(content), durationMs))
-    .catch(() => null)
-  if (cached?.sourceHash === sourceHash && cached.engine === FUNASR_ENGINE) {
-    await atomicWriteFiles([
-      { path: srtPath, content: funAsrCuesToSrt(cached.cues, (cue) => cue.recognizedText) },
-    ])
-    reportProgress('已复用同一原片的 FunASR 原始转写')
-    return { transcript: cached, jsonPath, srtPath }
-  }
-
-  const audioFingerprint = await fs.promises.readFile(audioFingerprintPath, 'utf8').catch(() => '')
-  if (
-    !(await fs.promises.stat(audioPath).catch(() => null))?.size ||
-    audioFingerprint.trim() !== sourceHash
-  ) {
-    reportProgress('第 1/3 步：FFmpeg 正在提取 16 kHz 单声道音频')
-    await executeFFmpeg(
-      ['-i', source, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', audioPath],
-      { abortSignal },
-    )
-    await fs.promises.writeFile(audioFingerprintPath, `${sourceHash}\n`, 'utf8')
-  }
-
-  reportProgress('第 2/3 步：FunASR 正在识别文字、时间、说话人和可用情绪')
-  const transcript = validateTranscript(
-    {
-      ...(await transcribeAudioWithFunAsr(audioPath, durationMs, abortSignal)),
-      sourceHash,
-      sourceAudioPath: relativeRunAsset(runId, audioPath),
-    },
-    durationMs,
-  )
-  await atomicWriteFiles([
-    { path: jsonPath, content: `${JSON.stringify(transcript, null, 2)}\n` },
-    { path: srtPath, content: funAsrCuesToSrt(transcript.cues, (cue) => cue.recognizedText) },
-  ])
-  return { transcript, jsonPath, srtPath }
 }

@@ -5,16 +5,13 @@ import { isDev } from './lib/is-dev'
 import path from 'node:path'
 import fs from 'node:fs'
 import initIPC from './ipc'
-import { initSqlite } from './sqlite'
 import i18next from 'i18next'
 import { initI18n } from './i18n'
 import { sendStatEvent } from './lib/stat'
-import { assertRunAsset } from './media-workspace'
-import { stopIndexTtsService } from './index-tts'
 import { resolveTalkingHeadMedia } from './talking-head-project'
+import { resolveFilmBreakdownMedia } from './film-breakdown-project'
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'short-video-media', privileges: { secure: true, standard: true, stream: true } },
   { scheme: 'talking-head-media', privileges: { secure: true, standard: true, stream: true } },
 ])
 
@@ -197,10 +194,6 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
-  void stopIndexTtsService()
-})
-
 app.on('activate', () => {
   //在OS X上，当出现以下情况时，通常会在应用程序中重新创建一个窗口
   //单击dock图标后，没有其他打开的窗口。
@@ -214,25 +207,18 @@ app.on('activate', () => {
 
 app.whenReady().then(async () => {
   if (process.platform === 'darwin') app.dock.setIcon(path.join(process.env.VITE_PUBLIC, appIcon))
-  protocol.registerFileProtocol('short-video-media', (request, callback) => {
-    try {
-      const url = new URL(request.url)
-      if (url.hostname !== 'asset') throw new Error('无效的媒体地址')
-      callback(assertRunAsset(url.searchParams.get('runId') || '', url.searchParams.get('path') || ''))
-    } catch {
-      callback({ error: -10 })
-    }
-  })
   protocol.registerFileProtocol('talking-head-media', (request, callback) => {
     try {
       const url = new URL(request.url)
       if (url.hostname !== 'asset') throw new Error('无效的媒体地址')
-      callback(resolveTalkingHeadMedia(url.searchParams.get('root') || '', url.searchParams.get('path') || ''))
+      const root = url.searchParams.get('root') || ''
+      const mediaPath = url.searchParams.get('path') || ''
+      try { callback(resolveTalkingHeadMedia(root, mediaPath)) }
+      catch { callback(resolveFilmBreakdownMedia(root, mediaPath)) }
     } catch {
       callback({ error: -10 })
     }
   })
-  initSqlite()
   await initI18n()
   initIPC()
   createWindow()

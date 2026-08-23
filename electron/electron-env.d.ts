@@ -23,6 +23,31 @@ interface Window {
     setZoomFactor: (factor: number) => void
     openExternal: (params: import('./types').OpenExternalParams) => Promise<void>
     statTrack: (params: import('./types').StatEventParams) => Promise<void>
+    filmBreakdownProject: {
+      choose: () => Promise<{ rootPath: string; name: string } | null>
+      show: (rootPath: string) => Promise<string>
+      chooseSource: (rootPath?: string) => Promise<{ rootPath: string; name: string; fileName: string; fingerprint: string; durationMs: number } | null>
+      load: (rootPath: string) => Promise<import('../src/runtime/filmBreakdown').FilmBreakdownProjectState>
+      detect: (rootPath: string, threshold: number) => Promise<{ shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[] }>
+      saveShots: (rootPath: string, shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[]) => Promise<{ shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[] }>
+      confirmShots: (rootPath: string) => Promise<{ shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[] }>
+      savePrompt: (rootPath: string, shotId: string, videoPrompt: string, imagePrompt: string) => Promise<import('../src/runtime/filmBreakdown').FilmBreakdownShot>
+      saveVideoResult: (rootPath: string, shotId: string, template: import('../src/runtime/filmBreakdown').FilmBreakdownVideoTemplate, prompt: string) => Promise<import('../src/runtime/filmBreakdown').FilmBreakdownShot>
+      analyze: (rootPath: string, textModel: import('./types').TextModel, templates: import('../src/runtime/filmBreakdown').FilmBreakdownVideoTemplate[]) => Promise<{ shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[] }>
+      identifyAssets: (rootPath: string, textModel: import('./types').TextModel) => Promise<{ assets: import('../src/runtime/filmBreakdown').FilmBreakdownAsset[] }>
+      saveAssetSelection: (rootPath: string, selectedIds: string[]) => Promise<{ assets: import('../src/runtime/filmBreakdown').FilmBreakdownAsset[] }>
+      saveFramePrompt: (rootPath: string, shotId: string, position: import('../src/runtime/filmBreakdown').FilmBreakdownFramePosition, prompt: string) => Promise<import('../src/runtime/filmBreakdown').FilmBreakdownShot>
+      saveAssetPrompt: (rootPath: string, assetId: string, prompt: string) => Promise<import('../src/runtime/filmBreakdown').FilmBreakdownAsset>
+      generateFramePrompts: (rootPath: string, textModel: import('./types').TextModel, positions: import('../src/runtime/filmBreakdown').FilmBreakdownFramePosition[]) => Promise<{ shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[] }>
+      generateAssetPrompts: (rootPath: string, textModel: import('./types').TextModel) => Promise<{ assets: import('../src/runtime/filmBreakdown').FilmBreakdownAsset[] }>
+      exportImages: (rootPath: string, format: 'md' | 'txt') => Promise<string | null>
+      exportVideos: (rootPath: string, templates: import('../src/runtime/filmBreakdown').FilmBreakdownVideoTemplate[], format: 'md' | 'txt') => Promise<string | null>
+      generateOverview: (rootPath: string, textModel: import('./types').TextModel) => Promise<{ videoOverview: import('../src/runtime/filmBreakdown').FilmBreakdownVideoOverview }>
+      saveOverview: (rootPath: string, overview: import('../src/runtime/filmBreakdown').FilmBreakdownVideoOverview) => Promise<{ videoOverview: import('../src/runtime/filmBreakdown').FilmBreakdownVideoOverview }>
+      exportCompletePrompts: (rootPath: string, targetSeconds: number, format: 'md' | 'txt') => Promise<string | null>
+      stopAnalysis: (rootPath: string) => Promise<void>
+      onProgress: (listener: (message: string) => void) => () => void
+    }
     talkingHeadProject: {
       choose: () => Promise<{ rootPath: string; name: string } | null>
       rename: (rootPath: string, name: string) => Promise<{ rootPath: string; name: string }>

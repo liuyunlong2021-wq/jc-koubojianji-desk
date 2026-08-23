@@ -1,6 +1,8 @@
 <template>
   <main class="desk-shell">
     <header class="project-bar">
+      <div class="product-switch" aria-label="产品模式"><button class="active">口播剪辑</button><button @click="router.push('/film-breakdown')">影片拉片</button></div>
+      <v-divider vertical class="mx-1" />
       <v-btn color="primary" variant="flat" size="small" prepend-icon="mdi-folder-plus-outline" @click="chooseProject">选择项目</v-btn>
       <v-select v-model="projectRoot" class="project-select" :items="projectHistory" item-title="name" item-value="rootPath" density="compact" variant="outlined" hide-details placeholder="未选择项目" aria-label="选择项目" @update:model-value="switchProject" />
       <v-btn icon="mdi-pencil-outline" variant="text" size="small" title="重命名项目" :disabled="!projectRoot" @click="openRenameProject" />
@@ -171,26 +173,7 @@
       </aside>
     </section>
 
-    <v-dialog v-model="settingsOpen" max-width="560">
-      <v-card prepend-icon="mdi-cog-outline" title="设置">
-        <v-card-text class="settings-content">
-          <v-select v-model="textModel" :items="textModels" label="文本模型" hide-details />
-          <div class="settings-row">
-            <v-text-field v-model="apiKey" label="API Key" :type="showApiKey ? 'text' : 'password'" :append-inner-icon="showApiKey ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" autocomplete="off" hide-details @click:append-inner="showApiKey = !showApiKey" />
-            <v-btn variant="tonal" @click="openKeysPage">前往设置</v-btn>
-          </div>
-          <p class="settings-status">{{ apiKeyStatus }}</p>
-          <v-divider />
-          <div class="settings-engine">
-            <div><strong>本地字幕引擎</strong><p>{{ funAsrStatus?.message || '正在检查安装状态…' }}</p><p v-if="funAsrProgress">{{ funAsrProgress }}</p></div>
-            <v-btn icon="mdi-refresh" size="small" variant="text" title="扫描、验证并绑定本机已有引擎" :loading="checkingFunAsr" @click="checkFunAsr" />
-            <v-btn :color="funAsrStatus?.state === 'ready' ? undefined : 'primary'" :variant="funAsrStatus?.state === 'ready' ? 'tonal' : 'flat'" :loading="installingFunAsr" :disabled="installingFunAsr || funAsrStatus?.state === 'ready'" @click="installFunAsr">{{ funAsrStatus?.state === 'ready' ? '已就绪' : '一键安装' }}</v-btn>
-          </div>
-          <div class="settings-engine"><div><strong>媒体导出引擎</strong><p>{{ ffmpegStatus?.message || '正在检查内置 FFmpeg…' }}</p></div></div>
-        </v-card-text>
-        <v-card-actions><v-spacer /><v-btn variant="text" @click="settingsOpen = false">关闭</v-btn><v-btn :loading="testingApiKey" variant="tonal" @click="testApiKey">测试连接</v-btn><v-btn color="primary" @click="saveSettings">保存</v-btn></v-card-actions>
-      </v-card>
-    </v-dialog>
+    <AppSettingsDialog v-model="settingsOpen" @subtitle-engine-status="updateSubtitleEngineStatus" />
     <v-dialog v-model="replaceSourceOpen" max-width="420">
       <v-card title="更换原视频">
         <v-card-text>更换后会清空当前识别字幕、人工确认稿和后续剪辑计划，且无法自动恢复。</v-card-text>
@@ -214,9 +197,13 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import AppSettingsDialog from '@/components/AppSettingsDialog.vue'
+import { appTextModel as textModel } from '@/runtime/appSettings'
 import { defaultTalkingHeadSubtitleStyle, editTalkingHeadCues, isTalkingHeadEditPlanValid, talkingHeadHighlightPositions, talkingHeadHighlightTemplates, talkingHeadMediaUrl, talkingHeadSoundEffects, type TalkingHeadBackgroundMusic, type TalkingHeadCue, type TalkingHeadHighlight, type TalkingHeadHighlightPosition, type TalkingHeadHighlightStyle } from '@/runtime/talkingHeadProject'
 
 const workspace = ref<'captions' | 'structure'>('captions')
+const router = useRouter()
 type ProjectHistoryItem = { name: string; rootPath: string }
 type PromptPreset = { name: string; prompt: string }
 const PROJECT_HISTORY_KEY = 'jc-koubojianji-project-history'
@@ -235,22 +222,7 @@ const renameProjectName = ref('')
 const renameProjectMessage = ref('')
 const settingsOpen = ref(false)
 const replaceSourceOpen = ref(false)
-const apiKey = ref('')
-const apiKeySaved = ref(false)
-const apiKeyMessage = ref('')
-const showApiKey = ref(false)
-const testingApiKey = ref(false)
-const textModel = ref('gemini-3.6-flash')
-const textModels = [
-  { title: 'Gemini 3.6 Flash', value: 'gemini-3.6-flash' },
-  { title: '豆包', value: 'doubao-seed-evolving' },
-]
-const installingFunAsr = ref(false)
-const checkingFunAsr = ref(false)
-const funAsrProgress = ref('')
-const funAsrStatus = ref<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string } | null>(null)
 const subtitleEngineStatus = ref<{ state: 'ready' | 'missing' | 'installing' | 'failed'; message: string } | null>(null)
-const ffmpegStatus = ref<{ state: 'ready' | 'failed'; message: string } | null>(null)
 const recognizing = ref(false)
 const transcriptionMessage = ref('')
 const captionMessage = ref('')
@@ -330,7 +302,6 @@ const estimatedDuration = computed(() => {
   const milliseconds = activeCues.value.reduce((total, cue) => total + cue.endMs - cue.startMs, 0)
   return `00:${String(Math.round(milliseconds / 1000)).padStart(2, '0')}`
 })
-const apiKeyStatus = computed(() => apiKeyMessage.value || (apiKeySaved.value ? 'API Key 已保存。' : '尚未配置 API Key。'))
 const sourceVideoUrl = computed(() => sourceFileName.value && projectRoot.value ? `${talkingHeadMediaUrl(projectRoot.value, sourceFileName.value)}&v=${encodeURIComponent(sourceFingerprint.value)}` : '')
 const finalVideoUrl = computed(() => finalFileName.value && projectRoot.value ? `${talkingHeadMediaUrl(projectRoot.value, finalFileName.value)}&v=${encodeURIComponent(finalVersion.value)}` : '')
 const backgroundMusicUrl = computed(() => backgroundMusic.value && projectRoot.value ? talkingHeadMediaUrl(projectRoot.value, backgroundMusic.value.fileName, '音频') : '')
@@ -344,20 +315,13 @@ const previewCue = computed(() => sourceCues.value.find((cue) => cue.cueId === s
 
 onMounted(async () => {
   subtitleFonts.value = sortFonts(await window.electron.talkingHeadProject.listFonts())
-  apiKeySaved.value = await window.electron.cloud.hasApiKey()
-  funAsrStatus.value = await window.electron.cloud.funAsrInstallStatus()
   subtitleEngineStatus.value = await window.electron.cloud.funAsrSubtitleInstallStatus()
-  ffmpegStatus.value = await window.electron.cloud.ffmpegStatus()
-})
-const stopFunAsrProgress = window.electron.cloud.onFunAsrInstallProgress((message) => {
-  funAsrProgress.value = message
 })
 const stopTranscriptionProgress = window.electron.talkingHeadProject.onProgress((message) => {
   transcriptionMessage.value = message
   if (composing.value) composeMessage.value = message
 })
 onBeforeUnmount(() => {
-  stopFunAsrProgress()
   stopTranscriptionProgress()
 })
 
@@ -521,63 +485,8 @@ async function enterStructureWorkspace() {
 async function showProject() {
   if (projectRoot.value) await window.electron?.talkingHeadProject?.show(projectRoot.value)
 }
-async function openSettings() {
-  settingsOpen.value = true
-  apiKeySaved.value = await window.electron.cloud.hasApiKey()
-}
-async function checkFunAsr() {
-  checkingFunAsr.value = true
-  funAsrProgress.value = '正在搜索、验证并绑定本机已有引擎…'
-  try {
-    const [funAsr, ffmpeg] = await Promise.all([
-      window.electron.cloud.scanFunAsr(),
-      window.electron.cloud.ffmpegStatus(),
-    ])
-    funAsrStatus.value = funAsr
-    subtitleEngineStatus.value = await window.electron.cloud.funAsrSubtitleInstallStatus()
-    ffmpegStatus.value = ffmpeg
-  } catch (error) {
-    funAsrStatus.value = { state: 'failed', message: `扫描失败：${error instanceof Error ? error.message : String(error)}` }
-  } finally {
-    checkingFunAsr.value = false
-    funAsrProgress.value = ''
-  }
-}
-async function saveSettings() {
-  if (apiKey.value.trim()) await window.electron.cloud.saveApiKey(apiKey.value)
-  apiKeySaved.value = await window.electron.cloud.hasApiKey()
-  apiKeyMessage.value = ''
-  apiKey.value = ''
-  settingsOpen.value = false
-}
-async function testApiKey() {
-  testingApiKey.value = true
-  apiKeyMessage.value = '正在连接云端…'
-  try {
-    if (apiKey.value.trim()) await window.electron.cloud.saveApiKey(apiKey.value)
-    await window.electron.cloud.testApiKey(textModel.value as import('~/electron/types').TextModel)
-    apiKeySaved.value = true
-    apiKeyMessage.value = '云端连接成功。'
-  } catch (error) {
-    apiKeyMessage.value = `连接失败：${error instanceof Error ? error.message : String(error)}`
-  } finally {
-    testingApiKey.value = false
-  }
-}
-async function installFunAsr() {
-  installingFunAsr.value = true
-  funAsrProgress.value = '正在开始安装…'
-  try {
-    funAsrStatus.value = await window.electron.cloud.installFunAsr()
-    subtitleEngineStatus.value = await window.electron.cloud.funAsrSubtitleInstallStatus()
-  } finally {
-    installingFunAsr.value = false
-    funAsrProgress.value = ''
-  }
-}
-function openKeysPage() {
-  window.electron.openExternal({ url: 'https://api.jiucaihezi.studio/keys' })
-}
+function openSettings() { settingsOpen.value = true }
+function updateSubtitleEngineStatus(status: { state: 'ready' | 'missing' | 'installing' | 'failed'; message: string }) { subtitleEngineStatus.value = status }
 function markFinalStale() {
   finalRendered.value = false
   finalFileName.value = ''
@@ -912,6 +821,7 @@ async function openOutputFolder() {
 <style scoped>
 .desk-shell { height: 100%; padding-top: 40px; display: grid; grid-template-rows: 52px minmax(0, 1fr); background: #f6f7f5; color: #17211a; }
 .project-bar { display: flex; align-items: center; gap: 7px; padding: 0 12px; border-bottom: 1px solid #dfe5df; background: #fff; }.project-select { width: 280px; }.workspace-nav { display: flex; align-items: center; gap: 5px; }.workspace-nav button { height: 34px; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 5px; background: transparent; color: #5d685f; font: inherit; white-space: nowrap; cursor: pointer; }.workspace-nav button.active { background: #e8f5eb; color: #176b37; font-weight: 650; }.workspace-arrow { color: #a8b0a9; }
+.product-switch { display: inline-flex; border: 1px solid #d6ded7; border-radius: 5px; overflow: hidden; }.product-switch button { height: 30px; padding: 0 9px; border: 0; background: #fff; color: #667168; font: inherit; font-size: 12px; cursor: pointer; }.product-switch button.active { background: #e8f5eb; color: #176b37; font-weight: 650; }
 .caption-workspace { min-height: 0; display: grid; grid-template-columns: minmax(300px, 360px) minmax(520px, 1fr) 300px; gap: 12px; padding: 12px; }.source-preview, .caption-table-wrap, .caption-actions, .final-preview-panel, .plan-panel, .instruction-panel { min-width: 0; border: 1px solid #dfe5df; border-radius: 6px; background: #fff; overflow: auto; }
 .source-preview { display: grid; align-content: start; padding: 10px; }.video-stage { width: 100%; aspect-ratio: 9 / 16; display: grid; place-content: center; gap: 8px; background: #1d2420; color: #d8e2da; text-align: center; }.video-meta { display:flex; justify-content:space-between; padding: 11px 2px; color: #68736a; font-size: 12px; }
 .panel-heading { min-height: 76px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e6ebe6; }.panel-heading.compact { min-height: 66px; }.panel-heading h1, .caption-actions h2, .export-settings h2 { margin: 0; font-size: 16px; font-weight: 700; }.panel-heading p, .caption-actions p { margin: 4px 0 0; color: #6c766f; font-size: 12px; }
@@ -921,7 +831,6 @@ async function openOutputFolder() {
 .plan-panel { padding-bottom: 12px; }.plan-section { display: flex; justify-content: space-between; padding: 14px 16px 8px; color: #176b37; font-size: 13px; font-weight: 700; }.plan-section small { color: #89938b; font-size: 11px; font-weight: 400; }.plan-cue { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 10px; border: 1px solid #dfe5df; border-radius: 5px; background: #fff; cursor: grab; }.plan-cue:hover { border-color: #86bd91; }.drag-handle { color: #a0aaa2; }.plan-cue-body { flex: 1; min-width: 0; }.plan-cue-body small { color: #708073; font-size: 11px; }.cue-actions { display: flex; }.highlight-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 7px; color: #718075; font-size: 11px; }.highlight-row select { min-width: 72px; height: 24px; border: 1px solid #d6ded7; border-radius: 3px; background: #fff; color: inherit; font: inherit; font-size: 11px; }.highlight-label { display: inline-block; padding: 1px 4px; border: 0; background: transparent; line-height: 1.35; cursor: pointer; font: inherit; }.removed-cues { margin: 14px 12px 0; border-top: 1px solid #e8ece8; color: #69756b; font-size: 12px; }.removed-cues summary { padding: 11px 0; cursor: pointer; }.removed-cue { display: flex; align-items: center; gap: 8px; padding: 7px 0; text-decoration: line-through; }.removed-cue span { flex: 1; min-width: 0; }
 .instruction-panel { padding: 0 14px 14px; }.instruction-panel .panel-heading { margin: 0 -14px; }.instruction-input { box-sizing: border-box; width: 100%; min-height: 150px; margin: 14px 0 10px; padding: 10px; border: 1px solid #d6ded7; border-radius: 5px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.55; }.instruction-input:focus { outline: 2px solid #c6e8cd; border-color: #62a571; }.suggestion-list, .personal-presets { display: flex; flex-wrap: wrap; gap: 6px; }.suggestion-list { margin-bottom: 10px; }.suggestion-list span, .personal-presets span { width: 100%; color: #7a857c; font-size: 12px; }.suggestion-list button, .personal-presets button { border: 1px solid #dbe5dc; border-radius: 4px; background: #fff; padding: 5px 7px; color: #3d6f49; font: inherit; font-size: 12px; cursor: pointer; }.suggestion-list button.selected, .personal-presets button.selected { border-color: #3d8b52; background: #edf8ef; }
 .export-settings { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e1e7e1; }.export-settings h2 { margin-bottom: 8px; font-size: 15px; }.ratio-toggle { display: flex; width: 100%; }.ratio-toggle :deep(.v-btn) { flex: 1; }.font-scale { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #68736a; font-size: 12px; }.font-scale span { flex: 0 0 52px; }.font-scale :deep(.v-slider) { flex: 1; }.position-slider { display: grid; grid-template-columns: 38px 1fr 38px; align-items: center; height: 40px; margin-top: 8px; color: #68736a; font-size: 11px; }.position-slider span:last-child { text-align: right; }.position-slider :deep(.v-slider) { min-width: 0; }.style-actions { display: flex; gap: 8px; margin-top: 8px; }.style-actions .v-btn { flex: 1; }.color-swatches { display: flex; gap: 14px; margin-top: 10px; }.color-swatches label { display: inline-flex; align-items: center; gap: 6px; color: #68736a; font-size: 12px; }.color-swatches input { width: 28px; height: 24px; padding: 1px; border: 1px solid #cfd8d0; border-radius: 4px; cursor: pointer; }.music-settings, .highlight-settings { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e1e7e1; }.music-settings h2, .highlight-settings h2 { margin-bottom: 8px; font-size: 15px; }.music-file { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: #526157; font-size: 12px; }.music-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.music-settings audio { width: 100%; height: 32px; margin: 6px 0; }.music-volume { display: flex; align-items: center; gap: 8px; color: #68736a; font-size: 12px; }.music-volume span { flex: 0 0 58px; }.music-volume :deep(.v-slider) { flex: 1; }.highlight-template-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 11px; font-weight: 700; }.export-status { display: flex; justify-content: space-between; margin: 12px 0; color: #68736a; font-size: 12px; }.export-status strong { color: #263129; font-size: 14px; }
-.settings-content { display: grid; gap: 16px; }.settings-row, .settings-engine { display: flex; align-items: center; gap: 10px; }.settings-row > :first-child { flex: 1; }.settings-status, .settings-engine p { margin: 0; color: #68736a; font-size: 12px; }.settings-engine { justify-content: space-between; }.settings-engine strong { font-size: 14px; }
 @media (max-width: 1100px) { .project-bar { gap: 3px; padding: 0 8px; }.project-select { width: 190px; }.workspace-nav { gap: 2px; }.workspace-nav button { padding: 0 7px; font-size: 12px; }.caption-workspace { grid-template-columns: minmax(260px, 320px) minmax(430px, 1fr); }.caption-actions { grid-column: 1 / -1; }.caption-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }.inspector-section { border-bottom: 0; }.structure-workspace { grid-template-columns: minmax(260px, 320px) minmax(390px, 1.5fr); }.instruction-panel { grid-column: 1 / -1; min-height: 230px; }.instruction-input { min-height: 100px; } }
 @media (max-width: 900px) { .project-select { width: 140px; }.project-bar .mx-2 { margin-left: 0 !important; margin-right: 0 !important; }.workspace-nav button { padding: 0 5px; font-size: 11px; } }
 @media (max-width: 700px) { .project-select { width: 120px; } }

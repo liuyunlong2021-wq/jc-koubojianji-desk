@@ -8,6 +8,8 @@ import { hasApiKey, saveApiKey, testApiKey } from './talking-head-cloud'
 import { getFunAsrInstallStatus, getFunAsrSubtitleInstallStatus, installFunAsr, scanFunAsr } from './funasr-installer'
 import { getFFmpegStatus } from './ffmpeg/index'
 import { calibrateTalkingHeadCues, chooseTalkingHeadBackgroundMusic, chooseTalkingHeadProject, chooseTalkingHeadSource, composeTalkingHeadEditPlan, generateTalkingHeadEditPlanForProject, generateTalkingHeadHighlightsForProject, listTalkingHeadFonts, loadTalkingHeadProjectState, prepareTalkingHeadSoundEffects, previewTalkingHeadFrame, renameTalkingHeadProject, restoreTalkingHeadRecognizedCues, saveTalkingHeadBackgroundMusic, saveTalkingHeadCues, saveTalkingHeadEditPlan, saveTalkingHeadHighlightPlan, saveTalkingHeadSubtitleStyle, setTalkingHeadSoundEffectsEnabled, showTalkingHeadOutput, showTalkingHeadProject, transcribeTalkingHeadSource } from './talking-head-project'
+import { analyzeFilmBreakdownShots, chooseFilmBreakdownProject, chooseFilmBreakdownSource, confirmFilmBreakdownShots, detectFilmBreakdownShots, exportFilmBreakdownCompletePrompts, exportFilmBreakdownImages, exportFilmBreakdownVideos, generateFilmBreakdownFramePrompts, generateFilmBreakdownProjectOverview, generateFilmBreakdownSelectedAssets, identifyFilmBreakdownProjectAssets, loadFilmBreakdownProject, saveFilmBreakdownAssetPrompt, saveFilmBreakdownAssetSelection, saveFilmBreakdownFramePrompt, saveFilmBreakdownProjectOverview, saveFilmBreakdownPrompt, saveFilmBreakdownShots, saveFilmBreakdownVideoResult, showFilmBreakdownProject, stopFilmBreakdownAnalysis } from './film-breakdown-project'
+import { toIpcValue } from '../src/runtime/ipcValue'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 let windowMaximizedByApp = false
@@ -105,6 +107,36 @@ export default function initIPC() {
   })
 
   ipcMain.handle('cloud-has-api-key', () => hasApiKey())
+  ipcMain.handle('film-breakdown-project-choose', () => chooseFilmBreakdownProject())
+  ipcMain.handle('film-breakdown-project-show', (_event, rootPath: string) => showFilmBreakdownProject(rootPath))
+  ipcMain.handle('film-breakdown-source-choose', (_event, rootPath?: string) => chooseFilmBreakdownSource(rootPath))
+  ipcMain.handle('film-breakdown-project-load', (_event, rootPath: string) => loadFilmBreakdownProject(rootPath))
+  ipcMain.handle('film-breakdown-detect', (event, rootPath: string, threshold: number) => detectFilmBreakdownShots(rootPath, threshold, (message) => event.sender.send('film-breakdown-progress', message)))
+  ipcMain.handle('film-breakdown-shots-save', (_event, rootPath: string, shots) => saveFilmBreakdownShots(rootPath, shots))
+  ipcMain.handle('film-breakdown-shots-confirm', (event, rootPath: string) => confirmFilmBreakdownShots(rootPath, (message) => event.sender.send('film-breakdown-progress', message)))
+  ipcMain.handle('film-breakdown-prompt-save', (_event, rootPath: string, shotId: string, videoPrompt: string, imagePrompt: string) => saveFilmBreakdownPrompt(rootPath, shotId, videoPrompt, imagePrompt))
+  ipcMain.handle('film-breakdown-video-result-save', (_event, rootPath: string, shotId, template, prompt) => saveFilmBreakdownVideoResult(rootPath, shotId, template, prompt))
+  ipcMain.handle('film-breakdown-analyze', async (event, rootPath: string, textModel, instructions) => {
+    try {
+      const templates = Array.isArray(instructions) ? instructions.map(String).filter((value) => value === 'video-prompt' || value === 'script') : []
+      const result = await analyzeFilmBreakdownShots(String(rootPath), textModel, templates, (message) => event.sender.send('film-breakdown-progress', String(message)))
+      return toIpcValue(result)
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : String(error))
+    }
+  })
+  ipcMain.handle('film-breakdown-assets-identify', (event, rootPath: string, textModel) => identifyFilmBreakdownProjectAssets(rootPath, textModel, (message) => event.sender.send('film-breakdown-progress', message)))
+  ipcMain.handle('film-breakdown-assets-select', (_event, rootPath: string, selectedIds) => saveFilmBreakdownAssetSelection(rootPath, selectedIds))
+  ipcMain.handle('film-breakdown-frame-prompt-save', (_event, rootPath: string, shotId, position, prompt) => saveFilmBreakdownFramePrompt(rootPath, shotId, position, prompt))
+  ipcMain.handle('film-breakdown-asset-prompt-save', (_event, rootPath: string, assetId, prompt) => saveFilmBreakdownAssetPrompt(rootPath, assetId, prompt))
+  ipcMain.handle('film-breakdown-frame-prompts-generate', (event, rootPath: string, textModel, positions) => generateFilmBreakdownFramePrompts(rootPath, textModel, positions, (message) => event.sender.send('film-breakdown-progress', message)))
+  ipcMain.handle('film-breakdown-asset-prompts-generate', (event, rootPath: string, textModel) => generateFilmBreakdownSelectedAssets(rootPath, textModel, (message) => event.sender.send('film-breakdown-progress', message)))
+  ipcMain.handle('film-breakdown-images-export', (_event, rootPath: string, format) => exportFilmBreakdownImages(rootPath, format))
+  ipcMain.handle('film-breakdown-videos-export', (_event, rootPath: string, templates, format) => exportFilmBreakdownVideos(rootPath, templates, format))
+  ipcMain.handle('film-breakdown-overview-generate', (event, rootPath: string, textModel) => generateFilmBreakdownProjectOverview(rootPath, textModel, (message) => event.sender.send('film-breakdown-progress', String(message))))
+  ipcMain.handle('film-breakdown-overview-save', (_event, rootPath: string, overview) => saveFilmBreakdownProjectOverview(rootPath, overview))
+  ipcMain.handle('film-breakdown-complete-prompts-export', (_event, rootPath: string, targetSeconds, format) => exportFilmBreakdownCompletePrompts(rootPath, targetSeconds, format))
+  ipcMain.handle('film-breakdown-analysis-stop', (_event, rootPath: string) => stopFilmBreakdownAnalysis(rootPath))
   ipcMain.handle('talking-head-project-choose', () => chooseTalkingHeadProject())
   ipcMain.handle('talking-head-project-rename', (_event, rootPath: string, name: string) => renameTalkingHeadProject(rootPath, name))
   ipcMain.handle('talking-head-project-show', (_event, rootPath: string) =>

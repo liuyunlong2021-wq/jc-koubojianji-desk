@@ -5,15 +5,11 @@ import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
 
-import Toast, { PluginOptions } from 'vue-toastification'
-import 'vue-toastification/dist/index.css'
-
 import 'virtual:uno.css'
 import './assets/base.scss'
 
 import { createApp } from 'vue'
 import router from './router/index.ts'
-import store, { useAppStore } from './store/index.ts'
 import App from './App.vue'
 
 import i18next from 'i18next'
@@ -48,13 +44,7 @@ const vuetify = createVuetify({
 const app = createApp(App)
 
 app.use(vuetify)
-app.use(Toast, {
-  position: 'bottom-left',
-  pauseOnFocusLoss: false,
-  closeOnClick: false,
-} as PluginOptions)
 app.use(router)
-app.use(store)
 
 // 初始化并应用国际化
 i18nInitialized().then(() => {
@@ -64,7 +54,6 @@ i18nInitialized().then(() => {
     window.i18n?.onLanguageChanged(async (lng) => {
       await i18next.changeLanguage(lng)
       document.title = '口播剪辑器'
-      useAppStore().updateLocale(lng)
     })
   })
 })

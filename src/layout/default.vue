@@ -2,7 +2,7 @@
   <div class="layout-container" :class="{ 'is-mac': isMac }" :style="layoutStyle">
     <div class="logo" v-if="!route.meta.hideAppIcon">
       <img src="/talking-head-logo.svg" alt="" />
-      <span>口播剪辑器</span>
+      <span>{{ route.path === '/film-breakdown' ? '影片拉片' : '口播剪辑器' }}</span>
     </div>
     <div class="window-control-bar">
       <div class="window-no-drag">
@@ -15,7 +15,7 @@
           <v-list
             class="p-2 space-y-1"
             activatable
-            :activated="[appStore.zoomFactor]"
+            :activated="[zoomFactor]"
             @update:activated="handleChangeZoom"
           >
             <v-list-item
@@ -49,38 +49,36 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
-import { useAppStore } from '@/store'
-
-const appStore = useAppStore()
-// const lang = ref(i18next.language)
-// console.log('i18next.language', i18next.language)
-
-document.title = '口播剪辑器'
 
 const route = useRoute()
+watchEffect(() => { document.title = route.path === '/film-breakdown' ? '影片拉片' : '口播剪辑器' })
 const isMac = window.electron?.platform === 'darwin'
 const layoutStyle = {
   '--window-control-mask-width': isMac ? '84px' : '210px',
 }
 const windowIsMaxed = ref(false)
+const zoomOptions = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+const savedZoom = Number(localStorage.getItem('jc-app-zoom'))
+const zoomFactor = ref(zoomOptions.includes(savedZoom) ? savedZoom : 1)
 
-const zoomDisplayOptions = appStore.zoomOptions.map((factor) => ({
+const zoomDisplayOptions = zoomOptions.map((factor) => ({
   value: factor,
   label: `${Math.round(factor * 100)}%`,
 }))
 
 const handleChangeZoom = (factor: unknown) => {
-  const zoomFactor = (factor as number[])[0]
-  if (zoomFactor) {
-    window.electron.setZoomFactor(zoomFactor)
-    appStore.updateZoomFactor(zoomFactor)
+  const selectedZoom = (factor as number[])[0]
+  if (selectedZoom) {
+    window.electron.setZoomFactor(selectedZoom)
+    localStorage.setItem('jc-app-zoom', String(selectedZoom))
+    zoomFactor.value = selectedZoom
   }
 }
 
 onMounted(() => {
-  window.electron?.setZoomFactor(appStore.zoomFactor)
+  window.electron?.setZoomFactor(zoomFactor.value)
 })
 
 window.addEventListener('resize', async () => {

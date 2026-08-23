@@ -38,10 +38,7 @@ export default defineConfig({
             __APP_EDITION__: JSON.stringify(process.env.APP_EDITION || 'talking-head'),
           },
           build: {
-            rollupOptions: {
-              external: ['better-sqlite3'],
-              output: { inlineDynamicImports: true },
-            },
+            rollupOptions: { output: { inlineDynamicImports: true } },
           },
         },
       },
