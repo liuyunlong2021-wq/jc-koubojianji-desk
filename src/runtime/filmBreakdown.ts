@@ -96,6 +96,10 @@ export function shotsFromSceneCuts(cutsMs: number[], durationMs: number, minimum
   })))
 }
 
+export function chooseFilmBreakdownDetectionCuts(primaryCuts: number[], fallbackCuts: number[], durationMs: number) {
+  return primaryCuts.length || durationMs > 30_000 ? primaryCuts : fallbackCuts
+}
+
 export function validateFilmBreakdownShots(shots: FilmBreakdownShot[], durationMs: number) {
   if (!shots.length || shots[0].startMs !== 0 || shots.at(-1)?.endMs !== durationMs) throw new Error('镜头时间轴没有覆盖完整原片')
   shots.forEach((shot, index) => {

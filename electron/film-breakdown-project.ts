@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { dialog, shell } from 'electron'
 import { executeFFmpeg } from './ffmpeg/index.ts'
 import { analyzeFilmBreakdownClip, generateFilmBreakdownAssetPrompt, generateFilmBreakdownImagePrompt, generateFilmBreakdownVideoOverview, hasApiKey, identifyFilmBreakdownAssets } from './talking-head-cloud.ts'
-import { filmBreakdownFrameTimestamp, formatFilmBreakdownCompletePrompts, formatFilmBreakdownImageDocument, formatFilmBreakdownMarkdown, formatFilmBreakdownVideoDocument, mergeFilmBreakdownAssetResults, normalizeFilmBreakdownAssets, normalizeFilmBreakdownVideoOverview, normalizeFilmBreakdownVideoTemplates, selectFilmBreakdownAssetReferences, shotsFromSceneCuts, validateFilmBreakdownShots, type FilmBreakdownAssetCategory, type FilmBreakdownFramePosition, type FilmBreakdownProjectState, type FilmBreakdownShot, type FilmBreakdownVideoOverview, type FilmBreakdownVideoTemplate } from '../src/runtime/filmBreakdown.ts'
+import { chooseFilmBreakdownDetectionCuts, filmBreakdownFrameTimestamp, formatFilmBreakdownCompletePrompts, formatFilmBreakdownImageDocument, formatFilmBreakdownMarkdown, formatFilmBreakdownVideoDocument, mergeFilmBreakdownAssetResults, normalizeFilmBreakdownAssets, normalizeFilmBreakdownVideoOverview, normalizeFilmBreakdownVideoTemplates, selectFilmBreakdownAssetReferences, shotsFromSceneCuts, validateFilmBreakdownShots, type FilmBreakdownAssetCategory, type FilmBreakdownFramePosition, type FilmBreakdownProjectState, type FilmBreakdownShot, type FilmBreakdownVideoOverview, type FilmBreakdownVideoTemplate } from '../src/runtime/filmBreakdown.ts'
 import { talkingHeadMediaDirectories, talkingHeadMediaRelativePath } from '../src/runtime/talkingHeadProject.ts'
 import type { TextModel } from './types.ts'
 
@@ -193,9 +193,17 @@ export async function detectFilmBreakdownShots(rootPath: string, threshold: numb
   if (![.2, .3, .4].includes(threshold)) throw new Error('切镜灵敏度无效')
   reportProgress('FFmpeg 正在检测镜头边界…')
   const source = path.join(project.rootPath, talkingHeadMediaRelativePath('视频', state.source.fileName))
-  const { stderr } = await executeFFmpeg(['-hide_banner', '-i', source, '-vf', `select=gt(scene\\,${threshold}),showinfo`, '-an', '-f', 'null', '-'])
-  const cuts = [...stderr.matchAll(/pts_time:([0-9.]+)/g)].map((match) => Number(match[1]) * 1000)
-  const shots = shotsFromSceneCuts(cuts, state.source.durationMs)
+  const detect = async (value: number) => {
+    const { stderr } = await executeFFmpeg(['-hide_banner', '-i', source, '-vf', `select=gt(scene\\,${value}),showinfo`, '-an', '-f', 'null', '-'])
+    return [...stderr.matchAll(/pts_time:([0-9.]+)/g)].map((match) => Number(match[1]) * 1000)
+  }
+  const primaryCuts = await detect(threshold)
+  let cuts = primaryCuts
+  if (!primaryCuts.length && state.source.durationMs <= 30_000) {
+    reportProgress('短片未检出明显硬切，正在进行敏感补检…')
+    cuts = chooseFilmBreakdownDetectionCuts(primaryCuts, await detect(.12), state.source.durationMs)
+  }
+  const shots = shotsFromSceneCuts(cuts, state.source.durationMs, cuts === primaryCuts ? 120 : 500)
   await writeState(project.rootPath, { ...state, detectionThreshold: threshold, boundariesConfirmed: false, shots, imageAssets: [], videoOverview: undefined })
   reportProgress(`镜头检测完成，共 ${shots.length} 镜`)
   return { shots }

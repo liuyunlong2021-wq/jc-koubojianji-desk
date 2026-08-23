@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { editFilmBreakdownShots, filmBreakdownFrameTimestamp, formatFilmBreakdownCompletePrompts, formatFilmBreakdownImageDocument, formatFilmBreakdownMarkdown, formatFilmBreakdownVideoDocument, groupFilmBreakdownShots, mergeFilmBreakdownAssetResults, normalizeFilmBreakdownAssets, normalizeFilmBreakdownVideoTemplates, selectFilmBreakdownAssetReferences, shotsFromSceneCuts, validateFilmBreakdownShots, type FilmBreakdownProjectState } from './filmBreakdown.ts'
+import { chooseFilmBreakdownDetectionCuts, editFilmBreakdownShots, filmBreakdownFrameTimestamp, formatFilmBreakdownCompletePrompts, formatFilmBreakdownImageDocument, formatFilmBreakdownMarkdown, formatFilmBreakdownVideoDocument, groupFilmBreakdownShots, mergeFilmBreakdownAssetResults, normalizeFilmBreakdownAssets, normalizeFilmBreakdownVideoTemplates, selectFilmBreakdownAssetReferences, shotsFromSceneCuts, validateFilmBreakdownShots, type FilmBreakdownProjectState } from './filmBreakdown.ts'
 
 test('切镜点生成首尾完整且连续的镜头时间轴', () => {
   const shots = shotsFromSceneCuts([3000, 3000, -1, 50, 7400, 9999], 8000)
@@ -14,6 +14,12 @@ test('切镜点生成首尾完整且连续的镜头时间轴', () => {
 
 test('尚未检测的空镜头列表不冒充有效时间轴', () => {
   assert.throws(() => validateFilmBreakdownShots([], 8000))
+})
+
+test('短片主阈值没有切点时才启用敏感阈值补检', () => {
+  assert.deepEqual(chooseFilmBreakdownDetectionCuts([], [12000], 15000), [12000])
+  assert.deepEqual(chooseFilmBreakdownDetectionCuts([], [12000], 30001), [])
+  assert.deepEqual(chooseFilmBreakdownDetectionCuts([9000], [12000], 15000), [9000])
 })
 
 test('人工拆分、调整和合并保持时间轴连续并只清空受影响镜头', () => {
