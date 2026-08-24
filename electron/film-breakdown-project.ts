@@ -1,15 +1,19 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
-import { dialog, shell } from 'electron'
-import { executeFFmpeg } from './ffmpeg/index.ts'
+import { spawn } from 'node:child_process'
+import { app, dialog, shell } from 'electron'
+import { executeFFmpeg, getFFmpegPath } from './ffmpeg/index.ts'
 import { analyzeFilmBreakdownClip, generateFilmBreakdownAssetPrompt, generateFilmBreakdownImagePrompt, generateFilmBreakdownVideoOverview, hasApiKey, identifyFilmBreakdownAssets } from './talking-head-cloud.ts'
 import { chooseFilmBreakdownDetectionCuts, filmBreakdownFrameTimestamp, formatFilmBreakdownCompletePrompts, formatFilmBreakdownImageDocument, formatFilmBreakdownMarkdown, formatFilmBreakdownVideoDocument, mergeFilmBreakdownAssetResults, normalizeFilmBreakdownAssets, normalizeFilmBreakdownVideoOverview, normalizeFilmBreakdownVideoTemplates, selectFilmBreakdownAssetReferences, shotsFromSceneCuts, validateFilmBreakdownShots, type FilmBreakdownAssetCategory, type FilmBreakdownFramePosition, type FilmBreakdownProjectState, type FilmBreakdownShot, type FilmBreakdownVideoOverview, type FilmBreakdownVideoTemplate } from '../src/runtime/filmBreakdown.ts'
 import { talkingHeadMediaDirectories, talkingHeadMediaRelativePath } from '../src/runtime/talkingHeadProject.ts'
+import { buildOnlineVideoDownloadArgs, isPathInside, validateOnlineVideoUrl } from '../src/runtime/onlineVideoImport.ts'
 import type { TextModel } from './types.ts'
 
 const allowedRoots = new Set<string>()
 const analysisControllers = new Map<string, AbortController>()
+let sourceDownloadController: AbortController | undefined
 const framePositions: FilmBreakdownFramePosition[] = ['start', 'middle', 'end']
 const videoPromptInstructions: Record<FilmBreakdownVideoTemplate, string> = {
   'video-prompt': `只输出当前镜头的一条可直接用于视频生成的中文提示词正文，不要解释、标题说明、代码块或 JSON 之外的文字。严格使用以下固定格式，并保持字段顺序：
@@ -168,7 +172,11 @@ export async function chooseFilmBreakdownSource(rootPath?: string) {
   if (selected.canceled || !selected.filePaths[0]) return null
   const project = rootPath ? await ensureFilmBreakdownProject(rootPath) : await chooseFilmBreakdownProject()
   if (!project) return null
-  const source = selected.filePaths[0]
+  return importFilmBreakdownSource(project.rootPath, selected.filePaths[0])
+}
+
+export async function importFilmBreakdownSource(rootPath: string, source: string) {
+  const project = await ensureFilmBreakdownProject(rootPath)
   const durationMs = await inspectVideo(source)
   const extension = path.extname(source).toLowerCase() || '.mp4'
   const target = path.join(project.rootPath, talkingHeadMediaRelativePath('视频', `拉片原片${extension}`))
@@ -184,6 +192,71 @@ export async function chooseFilmBreakdownSource(rootPath?: string) {
   ])
   await writeState(project.rootPath, { ...state, source: { fileName: path.basename(target), fingerprint, durationMs }, shots: [], imageAssets: [], videoOverview: undefined, boundariesConfirmed: false })
   return { ...project, fileName: path.basename(target), fingerprint, durationMs }
+}
+
+function ytDlpExecutable() {
+  const fileName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
+  const root = app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'runtime')
+  return path.join(root, 'yt-dlp', process.platform, fileName)
+}
+
+function runYtDlp(args: string[], signal: AbortSignal, reportProgress: (message: string) => void) {
+  return new Promise<string>((resolve, reject) => {
+    const executable = ytDlpExecutable()
+    if (!fs.existsSync(executable)) return reject(new Error('内置视频下载组件不可用，请重新安装应用'))
+    const child = spawn(executable, args, { env: process.env, shell: false })
+    let stdout = ''
+    let stderr = ''
+    const abort = () => child.kill('SIGTERM')
+    const collect = (chunk: Buffer, target: 'stdout' | 'stderr') => {
+      const text = chunk.toString()
+      if (target === 'stdout') stdout += text
+      else stderr += text
+      const percent = text.match(/\[download\]\s+([\d.]+)%/)?.[1]
+      if (percent) reportProgress(`正在下载… ${percent}%`)
+    }
+    child.stdout.on('data', (chunk) => collect(chunk, 'stdout'))
+    child.stderr.on('data', (chunk) => collect(chunk, 'stderr'))
+    child.on('error', (error) => reject(new Error(`无法启动视频下载组件：${error.message}`)))
+    child.on('close', (code) => {
+      signal.removeEventListener('abort', abort)
+      if (signal.aborted) return reject(new Error('下载已停止'))
+      if (code !== 0) {
+        if (/live video|is_live/i.test(stderr)) return reject(new Error('暂不支持直播链接'))
+        if (/cookies|sign in|login/i.test(stderr)) return reject(new Error('该视频需要登录，当前仅支持公开视频'))
+        return reject(new Error('视频下载失败，请检查链接和网络后重试'))
+      }
+      resolve(stdout)
+    })
+    signal.addEventListener('abort', abort, { once: true })
+  })
+}
+
+export async function downloadFilmBreakdownSource(rootPath: string, rawUrl: string, reportProgress: (message: string) => void) {
+  if (sourceDownloadController) throw new Error('已有视频正在下载')
+  const url = validateOnlineVideoUrl(rawUrl)
+  const project = await ensureFilmBreakdownProject(rootPath)
+  const temporaryDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'jc-film-download-'))
+  const controller = new AbortController()
+  sourceDownloadController = controller
+  try {
+    reportProgress('正在解析视频链接…')
+    const output = await runYtDlp(buildOnlineVideoDownloadArgs(temporaryDirectory, url, getFFmpegPath()), controller.signal, reportProgress)
+    const candidates = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).reverse()
+    const downloaded = candidates.find((candidate) => isPathInside(temporaryDirectory, candidate) && fs.existsSync(candidate))
+    if (!downloaded) throw new Error('视频下载失败，未找到下载文件')
+    const [realDirectory, realDownloaded] = await Promise.all([fs.promises.realpath(temporaryDirectory), fs.promises.realpath(downloaded)])
+    if (!isPathInside(realDirectory, realDownloaded)) throw new Error('视频下载结果路径无效')
+    reportProgress('下载完成，正在导入原片…')
+    return await importFilmBreakdownSource(project.rootPath, realDownloaded)
+  } finally {
+    if (sourceDownloadController === controller) sourceDownloadController = undefined
+    await fs.promises.rm(temporaryDirectory, { recursive: true, force: true })
+  }
+}
+
+export function stopFilmBreakdownSourceDownload() {
+  sourceDownloadController?.abort()
 }
 
 export async function detectFilmBreakdownShots(rootPath: string, threshold: number, reportProgress: (message: string) => void) {

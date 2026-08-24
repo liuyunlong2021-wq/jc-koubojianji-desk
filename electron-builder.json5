@@ -10,9 +10,11 @@
   files: ['dist', 'dist-electron', 'locales'],
   extraResources: [
     { from: 'runtime/funasr', to: 'funasr', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
+    { from: 'runtime/yt-dlp', to: 'yt-dlp', filter: ['**/*'] },
   ],
   npmRebuild: false,
   mac: {
+    x64ArchFiles: 'Contents/Resources/yt-dlp/**',
     target: [
       {
         target: 'dmg',

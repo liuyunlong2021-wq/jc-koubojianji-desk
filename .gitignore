@@ -20,6 +20,7 @@ release-translation
 
 # Downloaded by pnpm setup:funasr; pinned in build/scripts/setup-funasr.js
 third_party/FunASR/
+runtime/yt-dlp/
 __pycache__/
 *.pyc
 

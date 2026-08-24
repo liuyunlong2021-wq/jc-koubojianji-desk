@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('electron', {
     choose: () => filmInvoke('film-breakdown-project-choose'),
     show: (rootPath: string) => filmInvoke('film-breakdown-project-show', rootPath),
     chooseSource: (rootPath?: string) => filmInvoke('film-breakdown-source-choose', rootPath),
+    downloadSource: (rootPath: string, url: string) => filmInvoke('film-breakdown-source-download', rootPath, url),
+    stopSourceDownload: () => filmInvoke('film-breakdown-source-download-stop'),
     load: (rootPath: string) => filmInvoke('film-breakdown-project-load', rootPath),
     detect: (rootPath: string, threshold: number) => filmInvoke('film-breakdown-detect', rootPath, threshold),
     saveShots: (rootPath: string, shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[]) => filmInvoke('film-breakdown-shots-save', rootPath, shots),

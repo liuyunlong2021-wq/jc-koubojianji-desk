@@ -1,7 +1,7 @@
 # TDD-15：在线视频导入
 
 > 日期：2026-08-24  
-> 状态：待实施  
+> 状态：MVP 已实施，真实站点验收进行中
 > 实施分支：`codex/online-video-import`  
 > 基线：已合入影片拉片工作台的本地 `main` (`07035e4`)
 
@@ -127,18 +127,19 @@ stopFilmBreakdownSourceDownload(): void
 
 ```text
 --no-playlist
---no-live-from-start
+--match-filter !is_live
 --newline
 --progress
 --no-part
 --restrict-filenames
---format b[height<=1080]/b
+--format bv*[height<=1080]+ba/b[height<=1080]/b
+--ffmpeg-location <app-ffmpeg>
 --output <temp>/source.%(ext)s
 --print after_move:filepath
 <validated-url>
 ```
 
-选择单文件格式是为了避免 MVP 引入独立 `ffprobe` 和音视频合并链，对拉片分析已足够。部分站点可能因此只能取得 720p 或更低的带音频视频；只有真实用例证明清晰度不足时，再增加最佳视频+最佳音频合并。
+优先下载不超过 1080p 的最佳视频和最佳音频，并显式复用 App 已有的内置 FFmpeg 合并；如站点提供带音频单文件则回退到该文件。2026-08-24 真实 Bilibili 解析证明单文件 `b[height<=1080]/b` 不足，因此合并为 MVP 必要能力，不是可选扩展。
 
 不将 URL 放入 shell 字符串，不使用 `exec()`，不使用网页标题作为临时路径。
 
@@ -178,7 +179,7 @@ runtime/yt-dlp/
 ```
 
 - 版本必须固定，不在 App 运行时自动更新。
-- 构建脚本根据已固定的 SHA-256 校验下载文件；校验失败立即终止。
+- 构建脚本可通过固定 GitHub 转发地址获取官方发行文件，但必须根据已固定的官方 SHA-256 校验；校验失败立即终止。
 - 开发环境从仓库 `runtime/yt-dlp/<platform>/` 解析，打包后从 `process.resourcesPath/yt-dlp/<platform>/` 解析。
 - macOS/Linux 启动前检查可执行权限。
 - `electron-builder.json5` 仅增加一条 `extraResources`，将 `runtime/yt-dlp` 复制到应用资源。
@@ -261,3 +262,14 @@ runtime/yt-dlp/
 ## 12. 后续独立需求
 
 任意网页图片应使用 Node/Electron 原生 HTTP(S) 下载，然后进入一个“图片组”输入模型。每张图片可进行画面反推和资产分析，但不参与自动切镜、视频反推和时长导出。本轮不伪造一秒视频来复用视频数据结构。
+
+## 13. 2026-08-24 实施验证
+
+- 自动测试 `35/35` 通过，新增 URL 协议与凭据拒绝、yt-dlp 参数合同和临时路径边界测试。
+- `vue-tsc --noEmit` 和 `git diff --check` 通过。
+- yt-dlp 固定为 `2026.08.19`；本地官方 macOS 发行文件 SHA-256 与官方清单一致，并确认同时包含 x64 和 arm64。
+- 一条公开 5.76 秒、1920×1080 MP4 已使用内置 yt-dlp 真实下载，内置 FFmpeg 成功读取视频轨、音频轨和时长，测试临时文件已清理。
+- Bilibili 公开链接 `BV1xx411c7mD` 已成功解析；测试证明必须复用内置 FFmpeg 合并分离的视频和音频流，实施已按此修正。
+- Universal macOS App 和 211MB DMG 构建成功，深度签名校验通过；成品 App 内 yt-dlp 版本、双架构、可执行权限和内置 FFmpeg 路径均已验证。
+- Electron 影片拉片首屏已检查，“导入影片”入口布局正常，无文字溢出或重叠。继续点击时 macOS 锁屏，链接弹窗的最终人工点击验收待解锁后完成。
+- YouTube 在当前网络下连接被重置，未进入 JS challenge 阶段；抖音未获得稳定公开测试链接。这两项保留为真实环境验收，不标记为已通过。

@@ -7,6 +7,11 @@ const ffmpegPath: string = isDev
   ? require('ffmpeg-static')
   : (require('ffmpeg-static') as string).replace('app.asar', 'app.asar.unpacked')
 
+export function getFFmpegPath() {
+  validateExecutable()
+  return ffmpegPath
+}
+
 export async function getFFmpegStatus() {
   try {
     fs.accessSync(ffmpegPath, fs.constants.X_OK)

@@ -12,13 +12,13 @@
       <v-btn icon="mdi-cog-outline" variant="text" size="small" title="设置" aria-label="设置" @click="openSettings" />
     </header>
 
-    <section class="breakdown-workspace">
+    <section class="breakdown-workspace" :class="{ 'source-lock': downloadingSource }">
       <section class="source-preview" aria-label="原片预览">
         <video v-if="sourceFileName" ref="sourceVideo" class="video-stage" controls :src="sourceVideoUrl" @timeupdate="stopShotPreview" />
-        <div v-else class="video-stage empty-stage" role="button" tabindex="0" @click="chooseSource">
-          <v-btn color="primary" variant="flat" prepend-icon="mdi-upload" @click.stop="chooseSource">上传影片</v-btn>
+        <div v-else class="video-stage empty-stage">
+          <v-menu><template #activator="{ props }"><v-btn v-bind="props" color="primary" variant="flat" prepend-icon="mdi-import" append-icon="mdi-chevron-down" :disabled="downloadingSource">导入影片</v-btn></template><v-list density="compact"><v-list-item prepend-icon="mdi-folder-video-outline" title="本地影片" @click="chooseSource" /><v-list-item prepend-icon="mdi-link-variant" title="视频链接" @click="openSourceDialog" /></v-list></v-menu>
         </div>
-        <div class="video-meta"><span>{{ sourceFileName || '尚未导入影片' }}</span><v-btn v-if="sourceFileName" size="x-small" variant="text" color="primary" @click="chooseSource">更换影片</v-btn></div>
+        <div class="video-meta"><span>{{ sourceFileName || '尚未导入影片' }}</span><v-menu v-if="sourceFileName"><template #activator="{ props }"><v-btn v-bind="props" size="x-small" variant="text" color="primary" append-icon="mdi-chevron-down" :disabled="downloadingSource">更换影片</v-btn></template><v-list density="compact"><v-list-item prepend-icon="mdi-folder-video-outline" title="本地影片" @click="chooseSource" /><v-list-item prepend-icon="mdi-link-variant" title="视频链接" @click="openSourceDialog" /></v-list></v-menu></div>
         <section class="asset-sidebar">
           <header><div><h2>本片资产</h2><p>{{ imageAssets.length ? `已识别 ${imageAssets.length} 项` : '资产分析后显示' }}</p></div><v-icon size="19">mdi-image-multiple-outline</v-icon></header>
           <div v-if="!imageAssets.length" class="asset-empty">尚未识别角色、场景和关键道具</div>
@@ -121,6 +121,17 @@
     </section>
 
     <AppSettingsDialog v-model="settingsOpen" />
+    <v-dialog v-model="sourceDialogOpen" max-width="480" :persistent="downloadingSource">
+      <v-card title="导入视频链接">
+        <v-card-text>
+          <v-text-field v-model="sourceUrl" label="视频链接" placeholder="https://..." variant="outlined" autofocus :disabled="downloadingSource" @keyup.enter="downloadSource" />
+          <p class="source-note">仅支持公开的单条视频。请仅下载有权使用的内容。</p>
+          <v-alert v-if="sourceDownloadError" type="error" variant="tonal" density="compact">{{ sourceDownloadError }}</v-alert>
+          <p v-if="downloadingSource" class="source-progress">{{ progressMessage || '正在下载…' }}</p>
+        </v-card-text>
+        <v-card-actions><v-spacer /><v-btn v-if="!downloadingSource" variant="text" @click="sourceDialogOpen = false">取消</v-btn><v-btn v-if="downloadingSource" color="error" variant="tonal" prepend-icon="mdi-stop" @click="stopSourceDownload">停止下载</v-btn><v-btn v-else color="primary" variant="flat" :disabled="!sourceUrl.trim()" @click="downloadSource">下载并导入</v-btn></v-card-actions>
+      </v-card>
+    </v-dialog>
   </main>
 </template>
 
@@ -162,6 +173,10 @@ const targetPromptSeconds = ref(15)
 const durationTicks = { 4: '4', 10: '10', 15: '15', 20: '20', 25: '25', 30: '30' }
 const progressMessage = ref('')
 const settingsOpen = ref(false)
+const sourceDialogOpen = ref(false)
+const sourceUrl = ref('')
+const downloadingSource = ref(false)
+const sourceDownloadError = ref('')
 
 const sourceVideoUrl = computed(() => sourceFileName.value && projectRoot.value ? `${filmBreakdownMediaUrl(projectRoot.value, '视频', sourceFileName.value)}&v=${sourceFingerprint.value}` : '')
 const selectedShot = computed(() => shots.value.find((shot) => shot.shotId === selectedShotId.value))
@@ -171,13 +186,26 @@ const hasSelectedVideoResults = computed(() => shots.value.some((shot) => select
 const hasAllVideoPrompts = computed(() => shots.value.length > 0 && shots.value.every((shot) => videoResult(shot, 'video-prompt').trim()))
 const assetGroups = computed(() => ([['character', '角色'], ['scene', '场景'], ['prop', '关键道具']] as const).map(([category, title]) => ({ category, title, assets: imageAssets.value.filter((asset) => asset.category === category) })))
 const stopProgress = window.electron.filmBreakdownProject.onProgress((message) => { progressMessage.value = message })
-onBeforeUnmount(() => { stopProgress(); clearPreviewTimer() })
+onBeforeUnmount(() => { stopProgress(); clearPreviewTimer(); if (downloadingSource.value) void window.electron.filmBreakdownProject.stopSourceDownload() })
 
 function rememberProject(project: ProjectHistoryItem) { projectHistory.value = [project, ...projectHistory.value.filter((item) => item.rootPath !== project.rootPath)].slice(0, 20); localStorage.setItem(HISTORY_KEY, JSON.stringify(projectHistory.value)) }
-async function chooseProject() { const project = await window.electron.filmBreakdownProject.choose(); if (!project) return; projectRoot.value = project.rootPath; rememberProject(project); await loadProject() }
+async function chooseProject() { const project = await window.electron.filmBreakdownProject.choose(); if (!project) return null; projectRoot.value = project.rootPath; rememberProject(project); await loadProject(); return project }
 async function switchProject(value: unknown) { if (typeof value !== 'string' || !value) return; projectRoot.value = value; await loadProject() }
 async function loadProject() { const state = await window.electron.filmBreakdownProject.load(projectRoot.value); sourceFileName.value = state.source?.fileName || ''; sourceFingerprint.value = state.source?.fingerprint || ''; shots.value = state.shots; imageAssets.value = state.imageAssets || []; videoOverview.value = state.videoOverview; threshold.value = state.detectionThreshold; boundariesConfirmed.value = state.boundariesConfirmed; selectedShotId.value = state.shots[0]?.shotId || '' }
-async function chooseSource() { const source = await window.electron.filmBreakdownProject.chooseSource(projectRoot.value || undefined); if (!source) return; projectRoot.value = source.rootPath; rememberProject(source); sourceFileName.value = source.fileName; sourceFingerprint.value = source.fingerprint; shots.value = []; imageAssets.value = []; videoOverview.value = undefined; boundariesConfirmed.value = false; selectedShotId.value = '' }
+function applySource(source: { rootPath: string; name: string; fileName: string; fingerprint: string }) { projectRoot.value = source.rootPath; rememberProject(source); sourceFileName.value = source.fileName; sourceFingerprint.value = source.fingerprint; shots.value = []; imageAssets.value = []; videoOverview.value = undefined; boundariesConfirmed.value = false; selectedShotId.value = '' }
+async function chooseSource() { const source = await window.electron.filmBreakdownProject.chooseSource(projectRoot.value || undefined); if (source) applySource(source) }
+function openSourceDialog() { sourceDownloadError.value = ''; sourceDialogOpen.value = true }
+async function downloadSource() {
+  if (downloadingSource.value || !sourceUrl.value.trim()) return
+  sourceDownloadError.value = ''
+  if (!projectRoot.value && !(await chooseProject())) return
+  downloadingSource.value = true
+  progressMessage.value = '正在解析视频链接…'
+  try { const source = await window.electron.filmBreakdownProject.downloadSource(projectRoot.value, sourceUrl.value); applySource(source); sourceUrl.value = ''; sourceDialogOpen.value = false; progressMessage.value = '视频已下载并导入' }
+  catch (error) { sourceDownloadError.value = error instanceof Error ? error.message : String(error) }
+  finally { downloadingSource.value = false }
+}
+async function stopSourceDownload() { await window.electron.filmBreakdownProject.stopSourceDownload(); progressMessage.value = '正在停止下载…' }
 async function showProject() { if (projectRoot.value) await window.electron.filmBreakdownProject.show(projectRoot.value) }
 async function detectShots() { detecting.value = true; progressMessage.value = '正在准备镜头检测…'; try { const result = await window.electron.filmBreakdownProject.detect(projectRoot.value, threshold.value); shots.value = result.shots; imageAssets.value = []; videoOverview.value = undefined; boundariesConfirmed.value = false; selectedShotId.value = shots.value[0]?.shotId || '' } catch (error) { progressMessage.value = error instanceof Error ? error.message : String(error) } finally { detecting.value = false } }
 async function editShot(action: FilmBreakdownEditAction) { if (!selectedShot.value) return; const index = shots.value.findIndex((shot) => shot.shotId === selectedShotId.value); const next = editFilmBreakdownShots(shots.value, selectedShotId.value, action, playheadMs.value); if (next === shots.value) return; const result = await window.electron.filmBreakdownProject.saveShots(projectRoot.value, next); shots.value = result.shots; imageAssets.value = []; videoOverview.value = undefined; boundariesConfirmed.value = false; selectedShotId.value = shots.value[Math.min(index, shots.value.length - 1)]?.shotId || '' }
@@ -230,4 +258,6 @@ function statusColor(value: FilmBreakdownShot['analysisStatus']) { return ({ pen
 @media (max-width: 1100px) { .project-select { width: 190px; }.breakdown-workspace { grid-template-columns: minmax(280px, 340px) minmax(500px, 1fr); }.actions-panel { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }.action-section { border-bottom: 0; } }
 .action-progress { margin: 8px 0 0; color: #617067; font-size: 11px; line-height: 1.4; }
 .duration-slider { margin-top: 28px; padding-inline: 4px; }
+.source-lock .shot-panel, .source-lock .actions-panel { pointer-events: none; opacity: .65; }
+.source-note, .source-progress { margin: 0 0 12px; color: #68736a; font-size: 12px; line-height: 1.5; }.source-progress { color: #176b37; }
 </style>

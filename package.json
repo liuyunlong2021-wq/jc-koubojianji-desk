@@ -12,7 +12,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "cross-env APP_EDITION=talking-head VITE_CJS_IGNORE_WARNING=true vite",
-    "prebuild": "node build/scripts/clean-build.js",
+    "prebuild": "node build/scripts/setup-yt-dlp.js && node build/scripts/clean-build.js",
     "build": "cross-env APP_EDITION=talking-head vue-tsc && cross-env APP_EDITION=talking-head VITE_CJS_IGNORE_WARNING=true vite build && electron-builder --config electron-builder.talking-head.json5",
     "preview": "vite preview",
     "test": "node --require ./src/runtime/test-setup.cjs --experimental-test-module-mocks --test src/runtime/*.test.ts",
@@ -21,6 +21,7 @@
     "postinstall": "node build/scripts/post-install.js",
     "lipo-ffmpeg": "node build/scripts/lipo-ffmpeg.js",
     "setup:funasr": "node build/scripts/setup-funasr.js",
+    "setup:yt-dlp": "node build/scripts/setup-yt-dlp.js",
     "probe:funasr": "node build/scripts/setup-funasr.js --probe-only"
   },
   "dependencies": {

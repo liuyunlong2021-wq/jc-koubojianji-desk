@@ -27,6 +27,8 @@ interface Window {
       choose: () => Promise<{ rootPath: string; name: string } | null>
       show: (rootPath: string) => Promise<string>
       chooseSource: (rootPath?: string) => Promise<{ rootPath: string; name: string; fileName: string; fingerprint: string; durationMs: number } | null>
+      downloadSource: (rootPath: string, url: string) => Promise<{ rootPath: string; name: string; fileName: string; fingerprint: string; durationMs: number }>
+      stopSourceDownload: () => Promise<void>
       load: (rootPath: string) => Promise<import('../src/runtime/filmBreakdown').FilmBreakdownProjectState>
       detect: (rootPath: string, threshold: number) => Promise<{ shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[] }>
       saveShots: (rootPath: string, shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[]) => Promise<{ shots: import('../src/runtime/filmBreakdown').FilmBreakdownShot[] }>
